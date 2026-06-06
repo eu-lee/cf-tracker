@@ -1,76 +1,78 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import React from "react";
 import { PROBLEMS, TAG_GROUPS } from "./data.js";
 import { fmtDate, rankOf, relDate } from "./lib.js";
 import { DiffBadge, Latex, RankPill, Tag } from "./components.jsx";
 
+const ProblemNoteEditor = dynamic(() => import("./ProblemNoteEditor.jsx"), {
+  ssr: false,
+  loading: () => (
+    <div className="problem-note-editor-shell">
+      <div className="problem-note-editor problem-note-editor-empty">Loading notes...</div>
+    </div>
+  ),
+});
+
 /* ============================================================
    All Solved tab — sortable/filterable table
-   + draggable problem detail window
+   + full-screen problem detail view
    ============================================================ */
 
 function effNote(p, notes) {
   return notes && notes[p.id] != null ? notes[p.id] : p.note;
 }
 
+function notePlainText(note) {
+  if (!note) return "";
+  if (typeof note === "string") return note;
+  if (note.type === "tiptap") return note.text || "";
+  return "";
+}
+
+function truncate(s, n) {
+  const oneLine = s.replace(/\n+/g, " ");
+  if (oneLine.length <= n) return oneLine;
+  let cut = oneLine.slice(0, n);
+  const dollars = (cut.match(/\$/g) || []).length;
+  if (dollars % 2 !== 0) cut = cut.slice(0, cut.lastIndexOf("$"));
+  return cut.trim() + "…";
+}
+
 /* ---------------- detail window ---------------- */
 function ProblemWindow({ problem, notes, onClose, onSave }) {
-  const [pos, setPos] = React.useState(null); // {x,y} offset from center
-  const [editing, setEditing] = React.useState(false);
-  const [draft, setDraft] = React.useState("");
-  const drag = React.useRef(null);
   const note = effNote(problem, notes);
 
-  React.useEffect(() => {
-    function move(e) {
-      if (!drag.current) return;
-      setPos({ x: e.clientX - drag.current.sx, y: e.clientY - drag.current.sy });
-    }
-    function up() { drag.current = null; document.body.style.userSelect = ""; }
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
-    return () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
-  }, []);
-
-  function startDrag(e) {
-    const base = pos || { x: 0, y: 0 };
-    drag.current = { sx: e.clientX - base.x, sy: e.clientY - base.y };
-    document.body.style.userSelect = "none";
-  }
-
   const r = rankOf(problem.rating);
-  const transform = `translate(-50%,-50%) translate(${(pos?.x || 0)}px, ${(pos?.y || 0)}px)`;
-
-  function save() { onSave(problem.id, draft); setEditing(false); }
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 100, animation: "overlayIn .18s ease both" }}>
-      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "color-mix(in srgb, var(--bg) 55%, transparent)", backdropFilter: "blur(3px)" }} />
-      <div role="dialog" style={{
-        position: "absolute", top: "50%", left: "50%", transform, width: "min(560px, 92vw)",
-        maxHeight: "88vh", display: "flex", flexDirection: "column",
-        background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 14,
-        boxShadow: "var(--shadow-pop)", overflow: "hidden", animation: "popIn .22s cubic-bezier(.16,1,.3,1) both",
+    <div role="dialog" aria-modal="true" style={{
+      position: "fixed", inset: 0, zIndex: 100, overflowY: "auto",
+      background: "var(--bg)", animation: "overlayIn .18s ease both",
+    }}>
+      <div style={{
+        position: "sticky", top: 0, zIndex: 2,
+        background: "color-mix(in srgb, var(--bg) 88%, transparent)",
+        backdropFilter: "blur(12px)", borderBottom: "1px solid var(--border)",
       }}>
-        {/* title bar */}
-        <div onMouseDown={startDrag} style={{
-          display: "flex", alignItems: "center", gap: 10, padding: "11px 14px",
-          borderBottom: "1px solid var(--border)", cursor: "grab", background: "var(--panel-2)", flexShrink: 0,
+        <div style={{
+          maxWidth: 920, margin: "0 auto", padding: "14px 24px",
+          display: "flex", alignItems: "center", gap: 12,
         }}>
-          <div style={{ display: "flex", gap: 6 }}>
-            <button onClick={onClose} title="Close" style={{ width: 12, height: 12, borderRadius: 99, background: "var(--cf-red)", border: "none", cursor: "pointer", padding: 0 }} />
-            <span style={{ width: 12, height: 12, borderRadius: 99, background: "var(--cf-orange)", opacity: .5 }} />
-            <span style={{ width: 12, height: 12, borderRadius: 99, background: "var(--cf-green)", opacity: .5 }} />
-          </div>
-          <span className="mono" style={{ fontSize: 12, color: "var(--text-faint)", marginLeft: 4 }}>
+          <span className="mono" style={{ fontSize: 12, color: "var(--text-faint)" }}>
             problem · {problem.contestId}{problem.index}
           </span>
-          <button className="btn" onClick={onClose} style={{ marginLeft: "auto", padding: "3px 9px", fontSize: 16, lineHeight: 1 }}>×</button>
+          <button className="btn" onClick={onClose} aria-label="Close problem detail" style={{
+            marginLeft: "auto", width: 36, height: 36, padding: 0,
+            justifyContent: "center", fontSize: 22, lineHeight: 1,
+          }}>×</button>
         </div>
-
-        {/* body */}
-        <div style={{ padding: 22, overflowY: "auto" }}>
+      </div>
+      <div style={{
+        maxWidth: 920, margin: "0 auto", padding: "26px 24px 72px",
+      }}>
+        <div className="panel animate-in" style={{ padding: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <DiffBadge rating={problem.rating} />
             <RankPill rating={problem.rating}>{r.name + " level"}</RankPill>
@@ -116,32 +118,9 @@ function ProblemWindow({ problem, notes, onClose, onSave }) {
           <div style={{ marginTop: 20 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
               <span className="label">My notes</span>
-              {!editing && (
-                <button className="btn" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => { setDraft(note || ""); setEditing(true); }}>
-                  {note ? "Edit" : "Add note"}
-                </button>
-              )}
+              <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>autosaved · Markdown shortcuts · LaTeX enabled</span>
             </div>
-            {editing ? (
-              <div>
-                <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={7} autoFocus
-                  placeholder="Thought process, key insight, gotchas… use $a^2+b^2$ for LaTeX."
-                  style={{ width: "100%", resize: "vertical", fontFamily: "var(--font-mono)", fontSize: 13,
-                    lineHeight: 1.55, color: "var(--text)", background: "var(--panel-2)", border: "1px solid var(--border)",
-                    borderRadius: 9, padding: "11px 13px", outline: "none" }} />
-                <div style={{ display: "flex", gap: 8, marginTop: 9, alignItems: "center" }}>
-                  <button className="btn btn-accent" style={{ padding: "6px 14px" }} onClick={save}>Save note</button>
-                  <button className="btn" style={{ padding: "6px 14px" }} onClick={() => setEditing(false)}>Cancel</button>
-                  <span style={{ fontSize: 11.5, color: "var(--text-faint)", marginLeft: "auto" }}>$inline$ · $$display$$ LaTeX</span>
-                </div>
-              </div>
-            ) : note ? (
-              <Latex text={note} className="note-body" />
-            ) : (
-              <p style={{ fontSize: 13, color: "var(--text-faint)", fontStyle: "italic", margin: 0 }}>
-                No notes yet - capture your approach while it&apos;s fresh.
-              </p>
-            )}
+            <ProblemNoteEditor value={note} onChange={(payload) => onSave(problem.id, payload)} />
           </div>
         </div>
       </div>
@@ -177,7 +156,7 @@ function AllSolved({ notes, onOpen }) {
 
   const rows = React.useMemo(() => {
     let r = all.filter((p) => {
-      const hay = (p.name + " " + p.contestId + p.index + " " + p.tags.join(" ") + " " + (effNote(p, notes) || "")).toLowerCase();
+      const hay = (p.name + " " + p.contestId + p.index + " " + p.tags.join(" ") + " " + notePlainText(effNote(p, notes))).toLowerCase();
       if (q && !hay.includes(q.toLowerCase())) return false;
       if (activeTags.length && !activeTags.every((t) => p.tags.includes(t))) return false;
       return true;
@@ -263,6 +242,7 @@ function AllSolved({ notes, onOpen }) {
             <tbody>
               {rows.map((p) => {
                 const note = effNote(p, notes);
+                const preview = notePlainText(note);
                 return (
                   <tr key={p.id} onClick={() => onOpen(p)} className="prow"
                     style={{ borderBottom: "1px solid var(--border-2)", cursor: "pointer" }}>
@@ -271,8 +251,8 @@ function AllSolved({ notes, onOpen }) {
                         <span className="mono" style={{ fontSize: 11.5, color: "var(--text-faint)", flexShrink: 0 }}>{p.contestId}{p.index}</span>
                         <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{p.name}</span>
                       </div>
-                      {note && (
-                        <Latex className="note-preview" text={truncate(note, 70)}
+                      {preview && (
+                        <Latex className="note-preview" text={truncate(preview, 70)}
                           style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 300 }} />
                       )}
                     </td>
