@@ -198,6 +198,127 @@ body {
 /* row hovers */
 .recent-row { border-radius: 8px; }
 .recent-row:hover { background: var(--panel-hover) !important; }
+.recent-tag-lane {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  width: 100%;
+  min-width: 0;
+}
+.recent-tags {
+  display: flex;
+  flex-direction: row-reverse;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+  width: 100%;
+  max-height: 78px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  justify-content: flex-start;
+  align-content: flex-start;
+  align-items: flex-start;
+  padding-right: 2px;
+}
+.recent-tag-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.recent-solved-age {
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+.recent-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 22px;
+  padding: 2px 5px 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  width: fit-content;
+  max-width: 100%;
+  align-self: flex-start;
+}
+.recent-tag button,
+.recent-tag-add {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-faint);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+.recent-tag button:hover,
+.recent-tag-add:hover {
+  color: var(--text);
+  border-color: var(--border);
+  background: var(--panel-hover);
+}
+.recent-tag-add {
+  min-height: 22px;
+  width: 24px;
+  border-color: var(--border);
+  background: var(--panel-2);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.recent-tag-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 25;
+  width: min(240px, calc(100vw - 48px));
+  max-height: 280px;
+  overflow: auto;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  box-shadow: var(--shadow-pop);
+}
+
+.recent-tag-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.recent-tag-menu-item:hover {
+  background: var(--panel-hover);
+}
+
+.recent-tag-menu-empty {
+  padding: 9px 10px;
+  color: var(--text-faint);
+  font-size: 12.5px;
+}
 .prow { transition: background var(--t-fast); }
 .prow:hover { background: var(--panel-hover); }
 thead .label { white-space: nowrap; }

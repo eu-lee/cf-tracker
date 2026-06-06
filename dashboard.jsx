@@ -16,6 +16,7 @@ import {
   totals,
   typeDistribution,
   weakest,
+  withTagOverrides,
   withinDays,
 } from "./lib.js";
 import { DiffBadge, Latex, RankPill, Stat } from "./components.jsx";
@@ -25,9 +26,9 @@ import { DifficultyBars, RatingChart, SkillRadar, TypeDonut } from "./charts.jsx
    Dashboard tab
    ============================================================ */
 
-function ProfileHero({ user }) {
+function ProfileHero({ user, problems }) {
   const r = rankOf(user.rating);
-  const t = totals();
+  const t = totals(problems);
   return (
     <div className="panel animate-in" style={{ padding: 22, display: "flex", flexWrap: "wrap", gap: 24,
       alignItems: "center", justifyContent: "space-between" }}>
@@ -73,13 +74,13 @@ function EloByTopic({ stats }) {
           const pct = Math.max(6, Math.min(100, ((s.avg - lo) / (hi - lo)) * 100));
           const c = diffColor(s.avg);
           return (
-            <div key={s.name} style={{ display: "grid", gridTemplateColumns: "118px 1fr 66px", alignItems: "center", gap: 12 }}>
+            <div key={s.name} style={{ display: "grid", gridTemplateColumns: "118px 1fr 96px", alignItems: "center", gap: 12 }}>
               <span style={{ fontSize: 12.5, color: "var(--text-dim)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</span>
               <div style={{ height: 8, background: "var(--panel-2)", borderRadius: 99, overflow: "hidden", border: "1px solid var(--border-2)" }}>
                 <div style={{ width: pct + "%", height: "100%", background: c, borderRadius: 99,
                   transition: "width .6s cubic-bezier(.16,1,.3,1)" }} />
               </div>
-              <span className="mono" style={{ fontSize: 12.5, fontWeight: 600, color: c, textAlign: "right" }}>{s.avg} <span style={{ color: "var(--text-faint)", fontWeight: 500 }}>({s.count})</span></span>
+              <span className="mono" style={{ fontSize: 12.5, fontWeight: 600, color: c, textAlign: "right", whiteSpace: "nowrap" }}>{s.avg} <span style={{ color: "var(--text-faint)", fontWeight: 500 }}>({s.count})</span></span>
             </div>
           );
         })}
@@ -119,7 +120,97 @@ function WeakPoints({ topics }) {
   );
 }
 
-function RecentList({ problems, onOpen, onViewAll }) {
+const ALL_TAG_OPTIONS = Array.from(new Set([
+  ...Object.keys(TAG_GROUPS),
+  ...PROBLEMS.flatMap((p) => p.tags),
+])).sort((a, b) => {
+  const aa = (TAG_GROUPS[a] || a).toLowerCase();
+  const bb = (TAG_GROUPS[b] || b).toLowerCase();
+  return aa.localeCompare(bb);
+});
+
+function EditableTagList({ problem, onSaveTags }) {
+  function removeTag(tag) {
+    onSaveTags(problem.id, problem.tags.filter((t) => t !== tag));
+  }
+
+  return (
+    <div className="recent-tags" onClick={(e) => e.stopPropagation()}>
+      {problem.tags.map((t) => (
+        <span key={t} className="recent-tag">
+          <span>{TAG_GROUPS[t] || t}</span>
+          <button type="button" aria-label={`Remove ${(TAG_GROUPS[t] || t)} tag`} onClick={() => removeTag(t)}>×</button>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function TagPicker({ problem, onSaveTags }) {
+  const [open, setOpen] = React.useState(false);
+  const rootRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    function onPointerDown(e) {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+    }
+    function onKeyDown(e) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  function addTag(tag) {
+    onSaveTags(problem.id, [...problem.tags, tag]);
+    setOpen(false);
+  }
+
+  const availableTags = ALL_TAG_OPTIONS.filter((t) => !problem.tags.includes(t));
+
+  return (
+    <div ref={rootRef} onClick={(e) => e.stopPropagation()} style={{ position: "relative" }}>
+      <button
+        type="button"
+        className="recent-tag-add"
+        aria-label="Add tag"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >+</button>
+      {open && (
+        <div className="recent-tag-menu" role="listbox" aria-label="Codeforces tags">
+          {availableTags.length > 0 ? availableTags.map((t) => (
+            <button key={t} type="button" className="recent-tag-menu-item" onClick={() => addTag(t)}>
+              {TAG_GROUPS[t] || t}
+            </button>
+          )) : (
+            <div className="recent-tag-menu-empty">No more tags</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RecentTags({ problem, onSaveTags }) {
+  return (
+    <div className="recent-tag-lane" onClick={(e) => e.stopPropagation()}>
+      <EditableTagList problem={problem} onSaveTags={onSaveTags} />
+      <div className="recent-tag-meta">
+        <span className="recent-solved-age">{relDate(problem.solvedAt)}</span>
+        <TagPicker problem={problem} onSaveTags={onSaveTags} />
+      </div>
+    </div>
+  );
+}
+
+function RecentList({ problems, onOpen, onViewAll, onSaveTags }) {
   return (
     <div className="panel animate-in" style={{ padding: 20 }}>
       <div className="card-head">
@@ -130,32 +221,25 @@ function RecentList({ problems, onOpen, onViewAll }) {
       </div>
       <div style={{ display: "flex", flexDirection: "column" }}>
         {problems.map((p, i) => (
-          <button key={p.id} onClick={() => onOpen(p)} style={{
-            display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 14, alignItems: "center",
+          <div key={p.id} onClick={() => onOpen(p)} style={{
+            display: "grid", gridTemplateColumns: "auto minmax(0,1fr) minmax(320px, 0.9fr)", gap: 14, alignItems: "center",
             padding: "13px 8px", background: "transparent", border: "none",
             borderTop: i === 0 ? "none" : "1px solid var(--border-2)", cursor: "pointer", textAlign: "left", width: "100%",
             font: "inherit", color: "inherit",
           }} className="recent-row">
             <DiffBadge rating={p.rating} size="sm" />
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                <span className="mono" style={{ color: "var(--text-faint)", fontSize: 12, marginRight: 7 }}>{p.contestId}{p.index}</span>
-                {p.name}
+              <div style={{ minWidth: 0, fontSize: 13.5, fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <span className="mono" style={{ color: "var(--text-faint)", fontSize: 12, marginRight: 7 }}>{p.contestId}{p.index}</span>
+                  {p.name}
               </div>
               {p.note && (
                 <Latex className="note-preview" text={truncate(p.note, 90)}
                   style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }} />
               )}
             </div>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
-              <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>{relDate(p.solvedAt)}</span>
-              <div style={{ display: "flex", gap: 7 }}>
-                {p.tags.slice(0, 2).map((t) => (
-                  <span key={t} className="mono" style={{ fontSize: 10.5, color: "var(--text-faint)" }}>#{(TAG_GROUPS[t] || t).toLowerCase().replace(/ .*/, "")}</span>
-                ))}
-              </div>
-            </div>
-          </button>
+            <RecentTags problem={p} onSaveTags={onSaveTags} />
+          </div>
         ))}
       </div>
     </div>
@@ -257,11 +341,11 @@ function Empty({ msg, h = 150 }) {
   );
 }
 
-function Dashboard({ onOpenProblem, onGoAllSolved }) {
+function Dashboard({ tagOverrides = {}, onSaveTags, onOpenProblem, onGoAllSolved }) {
   const user = USER;
   const [range, setRange] = React.useState(RANGES[4]); // All
 
-  const allProblems = PROBLEMS;
+  const allProblems = withTagOverrides(PROBLEMS, tagOverrides);
   const windowed = withinDays(allProblems, range.days);
   const hasData = windowed.length > 0;
   const radar = radarTopics(windowed);
@@ -275,7 +359,7 @@ function Dashboard({ onOpenProblem, onGoAllSolved }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <ProfileHero user={user} />
+      <ProfileHero user={user} problems={allProblems} />
 
       {/* range toolbar */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", padding: "2px 2px 0" }}>
@@ -345,7 +429,7 @@ function Dashboard({ onOpenProblem, onGoAllSolved }) {
             </div>}
       </div>
 
-      <RecentList problems={recentList} onOpen={onOpenProblem} onViewAll={onGoAllSolved} />
+      <RecentList problems={recentList} onOpen={onOpenProblem} onViewAll={onGoAllSolved} onSaveTags={onSaveTags} />
       <RecommendStub />
     </div>
   );

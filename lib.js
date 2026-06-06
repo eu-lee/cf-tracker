@@ -56,6 +56,14 @@ import { PROBLEMS, TAG_GROUPS } from "./data";
     }));
   }
 
+  function effectiveTags(problem, overrides = {}) {
+    return overrides[problem.id] || problem.tags;
+  }
+
+  function withTagOverrides(probs = PROBLEMS, overrides = {}) {
+    return probs.map((p) => ({ ...p, tags: effectiveTags(p, overrides) }));
+  }
+
   // per-topic aggregate: count + avg ("elo") + max rating
   function topicStats(probs = PROBLEMS) {
     const map = {};
@@ -159,6 +167,7 @@ export {
   diffColor,
   difficultyDistribution,
   fmtDate,
+  effectiveTags,
   radarTopics,
   rankOf,
   ratingInRange,
@@ -168,5 +177,6 @@ export {
   totals,
   typeDistribution,
   weakest,
+  withTagOverrides,
   withinDays,
 };

@@ -9,13 +9,14 @@ import { AllSolved, ProblemWindow } from "./allsolved";
 import { Dashboard } from "./dashboard";
 
 const NOTES_KEY = "cf_tracker_notes_v1";
+const TAGS_KEY = "cf_tracker_tag_overrides_v1";
 const THEME_KEY = "cf_tracker_theme";
 const TAB_KEY = "cf_tracker_tab";
 
-function readNotes() {
+function readJson(key, fallback) {
   const storage = typeof window !== "undefined" ? window.localStorage : null;
-  if (!storage || typeof storage.getItem !== "function") return {};
-  try { return JSON.parse(storage.getItem(NOTES_KEY) || "{}"); } catch (e) { return {}; }
+  if (!storage || typeof storage.getItem !== "function") return fallback;
+  try { return JSON.parse(storage.getItem(key) || JSON.stringify(fallback)); } catch (e) { return fallback; }
 }
 
 function storedValue(key, fallback) {
@@ -29,6 +30,7 @@ export default function App() {
   const [theme, setTheme] = useState("dark");
   const [tab, setTab] = useState("dashboard");
   const [notes, setNotes] = useState({});
+  const [tagOverrides, setTagOverrides] = useState({});
   const [openProblem, setOpenProblem] = useState(null);
 
   useEffect(() => {
@@ -37,7 +39,8 @@ export default function App() {
       if (cancelled) return;
       setTheme(storedValue(THEME_KEY, "dark"));
       setTab(storedValue(TAB_KEY, "dashboard"));
-      setNotes(readNotes());
+      setNotes(readJson(NOTES_KEY, {}));
+      setTagOverrides(readJson(TAGS_KEY, {}));
       setHydrated(true);
     });
     return () => { cancelled = true; };
@@ -55,6 +58,15 @@ export default function App() {
     setNotes((prev) => {
       const next = { ...prev, [id]: text };
       window.localStorage?.setItem(NOTES_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  function saveTags(id, tags) {
+    const clean = [...new Set(tags.map((t) => t.trim()).filter(Boolean))];
+    setTagOverrides((prev) => {
+      const next = { ...prev, [id]: clean };
+      window.localStorage?.setItem(TAGS_KEY, JSON.stringify(next));
       return next;
     });
   }
@@ -110,12 +122,20 @@ export default function App() {
       {/* content */}
       <main style={{ maxWidth: 1180, margin: "0 auto", padding: "26px 24px 80px" }}>
         {tab === "dashboard"
-          ? <Dashboard onOpenProblem={setOpenProblem} onGoAllSolved={() => setTab("all")} />
-          : <AllSolved notes={notes} onOpen={setOpenProblem} />}
+          ? <Dashboard tagOverrides={tagOverrides} onSaveTags={saveTags} onOpenProblem={setOpenProblem} onGoAllSolved={() => setTab("all")} />
+          : <AllSolved notes={notes} tagOverrides={tagOverrides} onOpen={setOpenProblem} />}
       </main>
 
       {openProblem && (
-        <ProblemWindow key={openProblem.id} problem={openProblem} notes={notes} onClose={() => setOpenProblem(null)} onSave={saveNote} />
+        <ProblemWindow
+          key={openProblem.id}
+          problem={openProblem}
+          notes={notes}
+          tagOverrides={tagOverrides}
+          onClose={() => setOpenProblem(null)}
+          onSave={saveNote}
+          onSaveTags={saveTags}
+        />
       )}
     </div>
   );

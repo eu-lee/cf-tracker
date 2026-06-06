@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import React from "react";
 import { PROBLEMS, TAG_GROUPS } from "./data.js";
-import { fmtDate, rankOf, relDate } from "./lib.js";
+import { fmtDate, rankOf, relDate, withTagOverrides } from "./lib.js";
 import { DiffBadge, Latex, RankPill, Tag } from "./components.jsx";
 
 const ProblemNoteEditor = dynamic(() => import("./ProblemNoteEditor.jsx"), {
@@ -13,6 +13,15 @@ const ProblemNoteEditor = dynamic(() => import("./ProblemNoteEditor.jsx"), {
       <div className="problem-note-editor problem-note-editor-empty">Loading notes...</div>
     </div>
   ),
+});
+
+const ALL_TAG_OPTIONS = Array.from(new Set([
+  ...Object.keys(TAG_GROUPS),
+  ...PROBLEMS.flatMap((p) => p.tags),
+])).sort((a, b) => {
+  const aa = (TAG_GROUPS[a] || a).toLowerCase();
+  const bb = (TAG_GROUPS[b] || b).toLowerCase();
+  return aa.localeCompare(bb);
 });
 
 /* ============================================================
@@ -40,11 +49,89 @@ function truncate(s, n) {
   return cut.trim() + "…";
 }
 
+function TagEditor({ problemId, tags, onSaveTags }) {
+  const [open, setOpen] = React.useState(false);
+  const rootRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    function onPointerDown(e) {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+    }
+    function onKeyDown(e) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  function removeTag(tag) {
+    onSaveTags(problemId, tags.filter((t) => t !== tag));
+  }
+
+  function addTag(tag) {
+    onSaveTags(problemId, [...tags, tag]);
+    setOpen(false);
+  }
+
+  const availableTags = ALL_TAG_OPTIONS.filter((t) => !tags.includes(t));
+
+  return (
+    <div ref={rootRef} style={{ position: "relative" }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "start" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, minWidth: 0 }}>
+          {tags.map((t) => (
+            <Tag key={t}>
+              <span>{TAG_GROUPS[t] || t}</span>
+              <button
+                type="button"
+                aria-label={`Remove ${(TAG_GROUPS[t] || t)} tag`}
+                onClick={(e) => { e.stopPropagation(); removeTag(t); }}
+                style={{
+                  width: 16, height: 16, border: "none", background: "transparent", color: "inherit",
+                  padding: 0, cursor: "pointer", lineHeight: 1, fontSize: 14,
+                }}
+              >×</button>
+            </Tag>
+          ))}
+        </div>
+        <div style={{ position: "relative", justifySelf: "end" }}>
+          <button
+            type="button"
+            className="btn"
+            aria-label="Add tag"
+            aria-haspopup="listbox"
+            aria-expanded={open}
+            onClick={() => setOpen((v) => !v)}
+            style={{ height: 24, padding: "2px 10px", fontSize: 12 }}
+          >+</button>
+        </div>
+      </div>
+      {open && (
+        <div className="recent-tag-menu" role="listbox" aria-label="Codeforces tags" style={{ right: 0, left: "auto", top: "calc(100% + 6px)" }}>
+          {availableTags.length > 0 ? availableTags.map((t) => (
+            <button key={t} type="button" className="recent-tag-menu-item" onClick={() => addTag(t)}>
+              {TAG_GROUPS[t] || t}
+            </button>
+          )) : (
+            <div className="recent-tag-menu-empty">No more tags</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------------- detail window ---------------- */
-function ProblemWindow({ problem, notes, onClose, onSave }) {
+function ProblemWindow({ problem, notes, tagOverrides = {}, onClose, onSave, onSaveTags }) {
+  const effectiveProblem = { ...problem, tags: tagOverrides[problem.id] || problem.tags };
   const note = effNote(problem, notes);
 
-  const r = rankOf(problem.rating);
+  const r = rankOf(effectiveProblem.rating);
 
   return (
     <div role="dialog" aria-modal="true" style={{
@@ -74,20 +161,21 @@ function ProblemWindow({ problem, notes, onClose, onSave }) {
       }}>
         <div className="panel animate-in" style={{ padding: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <DiffBadge rating={problem.rating} />
-            <RankPill rating={problem.rating}>{r.name + " level"}</RankPill>
+            <DiffBadge rating={effectiveProblem.rating} />
+            <RankPill rating={effectiveProblem.rating}>{r.name + " level"}</RankPill>
             <a href="#" onClick={(e) => e.preventDefault()} style={{ marginLeft: "auto", fontSize: 12.5, color: "var(--accent-text)", textDecoration: "none" }}>
               open on codeforces ↗
             </a>
           </div>
 
           <h2 style={{ margin: "14px 0 4px", fontSize: 21, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--text)", lineHeight: 1.2 }}>
-            {problem.name}
+            {effectiveProblem.name}
           </h2>
 
           {/* tags */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
-            {problem.tags.map((t) => <Tag key={t}>{(TAG_GROUPS[t] || t)}</Tag>)}
+          <div style={{ marginTop: 12 }}>
+            <div className="label" style={{ marginBottom: 8 }}>Tags</div>
+            <TagEditor problemId={problem.id} tags={effectiveProblem.tags} onSaveTags={onSaveTags} />
           </div>
 
           {/* meta grid */}
@@ -138,8 +226,8 @@ const COLS = [
   { key: "solvedAt", label: "Solved", sortable: true, align: "right" },
 ];
 
-function AllSolved({ notes, onOpen }) {
-  const all = PROBLEMS;
+function AllSolved({ notes, tagOverrides = {}, onOpen }) {
+  const all = React.useMemo(() => withTagOverrides(PROBLEMS, tagOverrides), [tagOverrides]);
   const [q, setQ] = React.useState("");
   const [sort, setSort] = React.useState({ key: "solvedAt", dir: -1 });
   const [activeTags, setActiveTags] = React.useState([]);
@@ -260,7 +348,7 @@ function AllSolved({ notes, onOpen }) {
                     <td style={{ padding: "13px 16px" }}>
                       <div style={{ display: "flex", gap: 5, flexWrap: "wrap", maxWidth: 220 }}>
                         {p.tags.slice(0, 3).map((t) => (
-                          <span key={t} className="mono" style={{ fontSize: 10.5, color: "var(--text-faint)", whiteSpace: "nowrap" }}>#{(TAG_GROUPS[t] || t).toLowerCase()}</span>
+                          <span key={t} className="mono" style={{ fontSize: 10.5, color: "var(--text-faint)", whiteSpace: "nowrap" }}>{TAG_GROUPS[t] || t}</span>
                         ))}
                         {p.tags.length > 3 && <span className="mono" style={{ fontSize: 10.5, color: "var(--text-faint)" }}>+{p.tags.length - 3}</span>}
                       </div>
