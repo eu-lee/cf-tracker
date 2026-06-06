@@ -1,0 +1,213 @@
+/* ============================================================
+   Codeforces Tracker — design tokens & base styles
+   Aesthetic: clean modern dev-tool (Geist sans/mono, crisp)
+   ============================================================ */
+
+:root {
+  --font-sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", "SF Mono", ui-monospace, "JetBrains Mono", monospace;
+
+  --r-sm: 6px;
+  --r-md: 9px;
+  --r-lg: 13px;
+  --r-xl: 18px;
+
+  --t-fast: 120ms cubic-bezier(.4,0,.2,1);
+  --t-med: 220ms cubic-bezier(.4,0,.2,1);
+
+  /* Codeforces rank palette (tuned for both themes) */
+  --cf-gray:   #9596a1;
+  --cf-green:  #36ad53;
+  --cf-cyan:   #1fc0b3;
+  --cf-blue:   #5b86f5;
+  --cf-violet: #c061e6;
+  --cf-orange: #f5a524;
+  --cf-red:    #f0533f;
+}
+
+/* ---------- DARK (default) ---------- */
+[data-theme="dark"] {
+  --bg:          #08080a;
+  --bg-grid:     #0e0e11;
+  --panel:       #131316;
+  --panel-2:     #17171b;
+  --panel-hover: #1c1c21;
+  --border:      #262629;
+  --border-2:    #1c1c20;
+  --text:        #f2f2f3;
+  --text-dim:    #9c9ca6;
+  --text-faint:  #62626c;
+  --accent:      oklch(0.68 0.15 255);
+  --accent-dim:  oklch(0.68 0.15 255 / 0.14);
+  --accent-text: oklch(0.78 0.13 255);
+  --good:        #36ad53;
+  --bad:         #f0533f;
+  --shadow:      0 1px 2px rgba(0,0,0,.4), 0 8px 28px rgba(0,0,0,.45);
+  --shadow-pop:  0 12px 24px rgba(0,0,0,.5), 0 40px 80px rgba(0,0,0,.55);
+  --grid-line:   rgba(255,255,255,0.04);
+  color-scheme: dark;
+}
+
+/* ---------- LIGHT ---------- */
+[data-theme="light"] {
+  --bg:          #f7f7f8;
+  --bg-grid:     #f1f1f3;
+  --panel:       #ffffff;
+  --panel-2:     #fbfbfc;
+  --panel-hover: #f4f4f6;
+  --border:      #e7e7ea;
+  --border-2:    #eeeef0;
+  --text:        #16161a;
+  --text-dim:    #5c5c66;
+  --text-faint:  #9a9aa3;
+  --accent:      oklch(0.55 0.17 255);
+  --accent-dim:  oklch(0.55 0.17 255 / 0.10);
+  --accent-text: oklch(0.5 0.18 255);
+  --good:        #1a9c40;
+  --bad:         #e23b28;
+  --shadow:      0 1px 2px rgba(20,20,30,.05), 0 4px 16px rgba(20,20,30,.06);
+  --shadow-pop:  0 12px 28px rgba(20,20,30,.14), 0 40px 80px rgba(20,20,30,.18);
+  --grid-line:   rgba(0,0,0,0.035);
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background: var(--bg);
+  min-height: 100vh;
+  transition: background-color var(--t-med), color var(--t-med);
+}
+
+/* page background lives on a wrapper so it's immune to host html/body overrides */
+.app-shell {
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 44px 44px;
+  background-position: -1px -1px;
+  min-height: 100vh;
+  transition: background-color var(--t-med);
+}
+
+::selection { background: var(--accent-dim); color: var(--text); }
+
+/* scrollbars */
+*::-webkit-scrollbar { width: 11px; height: 11px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 99px;
+  border: 3px solid var(--bg);
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+
+/* ---------- shared atoms ---------- */
+.mono { font-family: var(--font-mono); font-feature-settings: "tnum" 1; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+}
+
+.btn {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 7px 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: background var(--t-fast), border-color var(--t-fast), transform var(--t-fast);
+  user-select: none;
+}
+.btn:hover { background: var(--panel-hover); border-color: var(--text-faint); }
+.btn:active { transform: translateY(1px); }
+.btn-accent {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.btn-accent:hover { filter: brightness(1.08); border-color: var(--accent); background: var(--accent); }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 99px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.chip-tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: -0.01em;
+}
+
+.label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* card title row */
+.card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.card-title { font-size: 14px; font-weight: 600; color: var(--text); letter-spacing: -0.01em; }
+
+/* focus ring */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* fade/slide entrances */
+@keyframes fadeUp { from { transform: translateY(7px); } to { transform: none; } }
+@keyframes popIn { from { opacity: 0; transform: scale(.96) translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes overlayIn { from { opacity: 0; } to { opacity: 1; } }
+.animate-in { animation: fadeUp .45s cubic-bezier(.16,1,.3,1); }
+@media (prefers-reduced-motion: reduce) { .animate-in { animation: none; } }
+
+/* row hovers */
+.recent-row { border-radius: 8px; }
+.recent-row:hover { background: var(--panel-hover) !important; }
+.prow { transition: background var(--t-fast); }
+.prow:hover { background: var(--panel-hover); }
+thead .label { white-space: nowrap; }
+
+/* responsive */
+@media (max-width: 860px) {
+  .grid-2 { grid-template-columns: 1fr !important; }
+}
+
+/* KaTeX sizing inside notes */
+.note-body { line-height: 1.65; font-size: 14px; color: var(--text-dim); }
+.note-body .katex { font-size: 1.02em; }
+.note-preview .katex { font-size: 0.95em; }
