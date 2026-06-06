@@ -3,8 +3,8 @@
 import dynamic from "next/dynamic";
 import React from "react";
 import { PROBLEMS, TAG_GROUPS } from "./data.js";
-import { fmtDate, rankOf, relDate, withTagOverrides } from "./lib.js";
-import { DiffBadge, Latex, RankPill, Tag } from "./components.jsx";
+import { fmtDate, relDate, withTagOverrides } from "./lib.js";
+import { DiffBadge, Latex, Tag } from "./components.jsx";
 
 const ProblemNoteEditor = dynamic(() => import("./ProblemNoteEditor.jsx"), {
   ssr: false,
@@ -131,8 +131,6 @@ function ProblemWindow({ problem, notes, tagOverrides = {}, onClose, onSave, onS
   const effectiveProblem = { ...problem, tags: tagOverrides[problem.id] || problem.tags };
   const note = effNote(problem, notes);
 
-  const r = rankOf(effectiveProblem.rating);
-
   return (
     <div role="dialog" aria-modal="true" style={{
       position: "fixed", inset: 0, zIndex: 100, overflowY: "auto",
@@ -162,7 +160,6 @@ function ProblemWindow({ problem, notes, tagOverrides = {}, onClose, onSave, onS
         <div className="panel animate-in" style={{ padding: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <DiffBadge rating={effectiveProblem.rating} />
-            <RankPill rating={effectiveProblem.rating}>{r.name + " level"}</RankPill>
             <a href="#" onClick={(e) => e.preventDefault()} style={{ marginLeft: "auto", fontSize: 12.5, color: "var(--accent-text)", textDecoration: "none" }}>
               open on codeforces ↗
             </a>
@@ -179,27 +176,17 @@ function ProblemWindow({ problem, notes, tagOverrides = {}, onClose, onSave, onS
           </div>
 
           {/* meta grid */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 1, marginTop: 18,
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 1, marginTop: 18,
             background: "var(--border-2)", border: "1px solid var(--border-2)", borderRadius: 10, overflow: "hidden" }}>
             {[
               ["Solved", fmtDate(problem.solvedAt)],
               ["Attempts", problem.attempts + (problem.attempts === 1 ? " (AC)" : "")],
-              ["Time", problem.timeMin + " min"],
-              ["Verdict", "Accepted"],
             ].map(([k, v], i) => (
               <div key={i} style={{ background: "var(--panel)", padding: "11px 13px" }}>
                 <div className="label" style={{ fontSize: 10 }}>{k}</div>
-                <div className="mono" style={{ fontSize: 13.5, fontWeight: 600, color: i === 3 ? "var(--good)" : "var(--text)", marginTop: 4 }}>{v}</div>
+                <div className="mono" style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", marginTop: 4 }}>{v}</div>
               </div>
             ))}
-          </div>
-
-          {/* statement snippet */}
-          <div style={{ marginTop: 18 }}>
-            <span className="label">Statement</span>
-            <Latex text={problem.statement} className="note-body"
-              style={{ marginTop: 7, padding: "13px 15px", borderLeft: "2px solid var(--border)",
-                background: "var(--panel-2)", borderRadius: "0 8px 8px 0", fontSize: 13.5, color: "var(--text-dim)" }} />
           </div>
 
           {/* notes */}
@@ -222,7 +209,6 @@ const COLS = [
   { key: "rating", label: "Difficulty", sortable: true, align: "left" },
   { key: "tags", label: "Tags", sortable: false, align: "left" },
   { key: "attempts", label: "Tries", sortable: true, align: "right" },
-  { key: "timeMin", label: "Time", sortable: true, align: "right" },
   { key: "solvedAt", label: "Solved", sortable: true, align: "right" },
 ];
 
@@ -281,7 +267,6 @@ function AllSolved({ notes, tagOverrides = {}, onOpen }) {
               <option value="solvedAt">Most recent</option>
               <option value="rating">Difficulty</option>
               <option value="attempts">Attempts</option>
-              <option value="timeMin">Time taken</option>
               <option value="name">Name</option>
             </select>
             <button className="btn" onClick={() => setSort((s) => ({ ...s, dir: -s.dir }))} title="Toggle direction" style={{ padding: "8px 11px" }}>
@@ -348,13 +333,14 @@ function AllSolved({ notes, tagOverrides = {}, onOpen }) {
                     <td style={{ padding: "13px 16px" }}>
                       <div style={{ display: "flex", gap: 5, flexWrap: "wrap", maxWidth: 220 }}>
                         {p.tags.slice(0, 3).map((t) => (
-                          <span key={t} className="mono" style={{ fontSize: 10.5, color: "var(--text-faint)", whiteSpace: "nowrap" }}>{TAG_GROUPS[t] || t}</span>
+                          <Tag key={t} onClick={() => toggleTag(t)} active={activeTags.includes(t)}>
+                            {(TAG_GROUPS[t] || t)}
+                          </Tag>
                         ))}
                         {p.tags.length > 3 && <span className="mono" style={{ fontSize: 10.5, color: "var(--text-faint)" }}>+{p.tags.length - 3}</span>}
                       </div>
                     </td>
                     <td className="mono" style={{ padding: "13px 16px", textAlign: "right", fontSize: 13, color: p.attempts === 1 ? "var(--good)" : "var(--text-dim)" }}>{p.attempts}</td>
-                    <td className="mono" style={{ padding: "13px 16px", textAlign: "right", fontSize: 13, color: "var(--text-dim)" }}>{p.timeMin}m</td>
                     <td className="mono" style={{ padding: "13px 16px", textAlign: "right", fontSize: 12.5, color: "var(--text-faint)" }}>{relDate(p.solvedAt)}</td>
                   </tr>
                 );

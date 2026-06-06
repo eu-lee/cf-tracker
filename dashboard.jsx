@@ -19,7 +19,7 @@ import {
   withTagOverrides,
   withinDays,
 } from "./lib.js";
-import { DiffBadge, Latex, RankPill, Stat } from "./components.jsx";
+import { DiffBadge, Latex, Stat } from "./components.jsx";
 import { DifficultyBars, RatingChart, SkillRadar, TypeDonut } from "./charts.jsx";
 
 /* ============================================================
@@ -32,23 +32,13 @@ function ProfileHero({ user, problems }) {
   return (
     <div className="panel animate-in" style={{ padding: 22, display: "flex", flexWrap: "wrap", gap: 24,
       alignItems: "center", justifyContent: "space-between" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 18, minWidth: 260 }}>
-        <div style={{
-          width: 64, height: 64, borderRadius: 16, flexShrink: 0,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          background: "linear-gradient(135deg, color-mix(in srgb," + "var(--cf-blue) 30%, transparent), transparent)",
-          border: "1.5px solid " + r.color,
-          fontSize: 28, fontWeight: 700, fontFamily: "var(--font-mono)", color: r.color,
-        }}>{user.handle[0].toUpperCase()}</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 22, fontWeight: 700, color: r.color, letterSpacing: "-0.02em" }}>{user.handle}</span>
-          </div>
-          <RankPill rating={user.rating} />
-          <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>
-            Member since {fmtDate(user.registered)} · contribution {user.contribution}
-          </span>
+      <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 260 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 22, fontWeight: 700, color: r.color, letterSpacing: "-0.02em" }}>{user.handle}</span>
         </div>
+        <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>
+          Member since {fmtDate(user.registered)} · contribution {user.contribution}
+        </span>
       </div>
       <div style={{ display: "flex", gap: 30, flexWrap: "wrap" }}>
         <Stat label="Rating" value={user.rating} color={r.color} sub={"peak " + user.maxRating} />

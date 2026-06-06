@@ -85,14 +85,6 @@ export default function App() {
       }}>
         <div style={{ maxWidth: 1180, margin: "0 auto", padding: "0 24px", height: 60,
           display: "flex", alignItems: "center", gap: 26 }}>
-          {/* brand */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 26, height: 26, borderRadius: 7, background: "var(--accent)",
-              display: "flex", alignItems: "center", justifyContent: "center", color: "#fff",
-              fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 15 }}>‹›</div>
-            <span style={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.02em" }}>grind<span style={{ color: "var(--text-faint)" }}>·tracker</span></span>
-          </div>
-
           {/* tabs */}
           <nav style={{ display: "flex", gap: 4, marginLeft: 8 }}>
             {tabs.map((t) => (

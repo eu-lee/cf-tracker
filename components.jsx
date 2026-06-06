@@ -4,7 +4,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { diffColor, rankOf } from "./lib.js";
+import { diffColor } from "./lib.js";
 
 /* Render text containing $inline$ / $$display$$ LaTeX via KaTeX auto-render */
 export function Latex({ text, className, style }) {
@@ -29,45 +29,44 @@ export function Latex({ text, className, style }) {
   return <div ref={ref} className={className} style={{ whiteSpace: "pre-wrap", ...style }} />;
 }
 
-/* Rank/difficulty badge — colored rating pill */
+/* Numeric difficulty badge */
 export function DiffBadge({ rating, size = "md" }) {
   const color = diffColor(rating);
   const pad = size === "sm" ? "1px 7px" : "2px 9px";
   const fs = size === "sm" ? 11.5 : 13;
   return (
     <span className="mono" style={{
-      display: "inline-flex", alignItems: "center", padding: pad, borderRadius: 6,
-      fontSize: fs, fontWeight: 600, color: color, background: "color-mix(in srgb, " + cmix(color) + " 13%, transparent)",
-      border: "1px solid color-mix(in srgb, " + cmix(color) + " 28%, transparent)", letterSpacing: "-0.01em",
+      display: "inline-flex", alignItems: "center", padding: pad, borderRadius: 0,
+      fontSize: fs, fontWeight: 600, color, background: "transparent",
+      border: "none", letterSpacing: "-0.01em",
     }}>{rating}</span>
-  );
-}
-// color-mix needs a real color; css vars work in modern browsers directly
-function cmix(c) { return c; }
-
-/* Rank name pill (e.g. Expert) */
-export function RankPill({ rating, children }) {
-  const r = rankOf(rating);
-  return (
-    <span style={{
-      display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600,
-      color: r.color,
-    }}>
-      <span style={{ width: 7, height: 7, borderRadius: 99, background: r.color }} />
-      {children || r.name}
-    </span>
   );
 }
 
 /* Tag chip */
 export function Tag({ children, onClick, active }) {
+  function handleClick(e) {
+    if (!onClick) return;
+    e.stopPropagation();
+    onClick(e);
+  }
   return (
-    <span className="chip chip-tag" onClick={onClick} style={{
+    <span className="chip chip-tag" onClick={handleClick} style={{
       cursor: onClick ? "pointer" : "default",
       background: active ? "var(--accent-dim)" : undefined,
       borderColor: active ? "var(--accent)" : undefined,
       color: active ? "var(--accent-text)" : undefined,
-    }}>{children}</span>
+    }}
+    role={onClick ? "button" : undefined}
+    tabIndex={onClick ? 0 : undefined}
+    onKeyDown={onClick ? (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick(e);
+      }
+    } : undefined}
+    >{children}</span>
   );
 }
 
