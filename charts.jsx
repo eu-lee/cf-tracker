@@ -7,17 +7,22 @@ import { useState } from "react";
 import { fmtDate, rankOf } from "./lib.js";
 
 /* ---------------- Rating line chart ---------------- */
+function shortDate(iso) {
+  const [year, month] = iso.split("-").map(Number);
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${months[month - 1]} '${String(year).slice(2)}`;
+}
+
 export function RatingChart({ history }) {
   const [hover, setHover] = useState(null);
-  const W = 760, H = 280, padL = 8, padR = 8, padT = 18, padB = 26;
+  const W = 760, H = 300, padL = 8, padR = 8, padT = 18, padB = 44;
   const ratings = history.map((h) => h.rating);
   const minR = Math.min(...ratings), maxR = Math.max(...ratings);
   const lo = Math.floor((minR - 70) / 100) * 100;
   const hi = Math.ceil((maxR + 70) / 100) * 100;
-  const x = (i) => history.length <= 1 ? (W) / 2 : padL + (i / (history.length - 1)) * (W - padL - padR);
+  const x = (i) => history.length <= 1 ? W / 2 : padL + (i / (history.length - 1)) * (W - padL - padR);
   const y = (r) => padT + (1 - (r - lo) / (hi - lo)) * (H - padT - padB);
 
-  // rank bands within [lo,hi]
   const bands = [
     { lo: 0, hi: 1199, color: "var(--cf-gray)" },
     { lo: 1200, hi: 1399, color: "var(--cf-green)" },
@@ -32,6 +37,15 @@ export function RatingChart({ history }) {
   const gridY = [];
   for (let r = lo; r <= hi; r += 100) gridY.push(r);
 
+  // pick up to 6 evenly-spaced x-axis date labels, always including first + last
+  const maxLabels = 6;
+  const step = Math.max(1, Math.ceil((history.length - 1) / (maxLabels - 1)));
+  const xAxisIdx = [...new Set([
+    0,
+    ...history.map((_, i) => i).filter((i) => i % step === 0),
+    history.length - 1,
+  ])];
+
   return (
     <div style={{ position: "relative", width: "100%" }}>
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}
@@ -42,14 +56,12 @@ export function RatingChart({ history }) {
             <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
           </linearGradient>
         </defs>
-        {/* rank bands */}
         {bands.map((b, i) => {
           const yTop = y(Math.min(b.hi, hi));
           const yBot = y(Math.max(b.lo, lo));
           return <rect key={i} x={padL} y={yTop} width={W - padL - padR} height={Math.max(0, yBot - yTop)}
             fill={b.color} opacity="0.05" />;
         })}
-        {/* gridlines */}
         {gridY.map((r) => (
           <g key={r}>
             <line x1={padL} y1={y(r)} x2={W - padR} y2={y(r)} stroke="var(--border-2)" strokeWidth="1" />
@@ -57,11 +69,18 @@ export function RatingChart({ history }) {
               fill="var(--text-faint)">{r}</text>
           </g>
         ))}
-        {/* area + line */}
+        {/* x-axis date labels */}
+        {xAxisIdx.map((i) => (
+          <g key={i}>
+            <line x1={x(i)} y1={H - padB + 4} x2={x(i)} y2={H - padB + 10}
+              stroke="var(--border)" strokeWidth="1" />
+            <text x={x(i)} y={H - padB + 22} textAnchor="middle" fontSize="10"
+              fontFamily="var(--font-mono)" fill="var(--text-faint)">{shortDate(history[i].date)}</text>
+          </g>
+        ))}
         <path d={areaPath} fill="url(#ratingFill)" />
         <path d={linePath} fill="none" stroke="var(--accent)" strokeWidth="2.2"
           strokeLinejoin="round" strokeLinecap="round" />
-        {/* points */}
         {history.map((h, i) => {
           const c = rankOf(h.rating).color;
           const active = hover === i;
@@ -113,18 +132,26 @@ export function Tooltip({ children, xPct }) {
 }
 
 /* ---------------- Skills radar ---------------- */
-export function SkillRadar({ topics }) {
+export function SkillRadar({ topics, lo = 800, hi = 2000 }) {
   const [hover, setHover] = useState(null);
-  const size = 320, cx = size / 2, cy = size / 2 + 6, R = 100;
+  const size = 320, cx = size / 2, cy = size / 2 + 6, R = 200;
   const n = topics.length;
   const angle = (i) => (Math.PI * 2 * i) / n - Math.PI / 2;
   const pt = (i, r) => [cx + Math.cos(angle(i)) * R * r, cy + Math.sin(angle(i)) * R * r];
   const rings = [0.25, 0.5, 0.75, 1];
 
-  const poly = topics.map((t, i) => pt(i, Math.max(0.06, t.skill)).map((v) => v.toFixed(1)).join(",")).join(" ");
+  const poly = topics.map((t, i) => pt(i, Math.max(0.05, t.skill)).map((v) => v.toFixed(1)).join(",")).join(" ");
+
+  // ring difficulty labels sit just right of the top spoke (cx, cy - R*frac)
+  const ringLabels = rings.map((r) => ({
+    r,
+    val: Math.round(lo + r * (hi - lo)),
+    x: cx + 5,
+    y: cy - R * r,
+  }));
 
   return (
-    <svg viewBox={`-58 -6 ${size + 116} ${size + 6}`} style={{ width: "100%", height: "auto", maxWidth: 420, display: "block", margin: "0 auto", overflow: "visible" }}>
+    <svg viewBox="-172 -90 664 516" style={{ width: "100%", height: "auto", display: "block", overflow: "visible" }}>
       {/* rings */}
       {rings.map((r, ri) => (
         <polygon key={ri}
@@ -140,22 +167,27 @@ export function SkillRadar({ topics }) {
       <polygon points={poly} fill="var(--accent)" fillOpacity="0.16" stroke="var(--accent)" strokeWidth="2" strokeLinejoin="round" />
       {/* vertices */}
       {topics.map((t, i) => {
-        const [px, py] = pt(i, Math.max(0.06, t.skill));
-        return <circle key={i} cx={px} cy={py} r={hover === i ? 5 : 3.2} fill="var(--panel)"
+        const [px, py] = pt(i, Math.max(0.05, t.skill));
+        return <circle key={i} cx={px} cy={py} r={hover === i ? 6 : 3.8} fill="var(--panel)"
           stroke="var(--accent)" strokeWidth="2"
           onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} style={{ cursor: "pointer" }} />;
       })}
-      {/* labels */}
+      {/* ring difficulty labels */}
+      {ringLabels.map(({ r, val, x, y }) => (
+        <text key={r} x={x} y={y} dominantBaseline="middle" fontSize="9.5"
+          fontFamily="var(--font-mono)" fill="var(--text-faint)" opacity="0.8">{val}</text>
+      ))}
+      {/* topic labels */}
       {topics.map((t, i) => {
-        const [lx, ly] = pt(i, 1.26);
+        const [lx, ly] = pt(i, 1.15);
         const a = angle(i);
-        const anchor = Math.abs(Math.cos(a)) < 0.3 ? "middle" : Math.cos(a) > 0 ? "start" : "end";
+        const anchor = Math.abs(Math.cos(a)) < 0.25 ? "middle" : Math.cos(a) > 0 ? "start" : "end";
         return (
           <g key={i}>
-            <text x={lx} y={ly} textAnchor={anchor} dominantBaseline="middle" fontSize="10.5"
+            <text x={lx} y={ly} textAnchor={anchor} dominantBaseline="middle" fontSize="12.5"
               fontWeight={hover === i ? 700 : 500}
               fill={hover === i ? "var(--text)" : "var(--text-dim)"}>{t.name}</text>
-            <text x={lx} y={ly + 12} textAnchor={anchor} dominantBaseline="middle" fontSize="9.5"
+            <text x={lx} y={ly + 15} textAnchor={anchor} dominantBaseline="middle" fontSize="11"
               fontFamily="var(--font-mono)" fill="var(--text-faint)">avg {t.avg || "—"}</text>
           </g>
         );

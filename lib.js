@@ -31,7 +31,7 @@ import { PROBLEMS, TAG_GROUPS } from "./data";
   ];
 
   const DAY_MS = 86400000;
-  const NOW_MS = dateMs("2026-06-06");
+  function nowMs() { return Date.now(); }
 
   function dateParts(iso) {
     return iso.split("-").map(Number);
@@ -45,15 +45,28 @@ import { PROBLEMS, TAG_GROUPS } from "./data";
   // filter a problem list to those solved within `days` of now (null = all)
   function withinDays(probs, days) {
     if (!days) return probs.slice();
-    const cutoff = NOW_MS - days * DAY_MS;
+    const cutoff = nowMs() - days * DAY_MS;
     return probs.filter((p) => dateMs(p.solvedAt) >= cutoff);
   }
 
   function difficultyDistribution(probs = PROBLEMS) {
-    return DIFF_BUCKETS.map((b) => ({
-      ...b,
-      count: probs.filter((p) => p.rating >= b.lo && p.rating <= b.hi).length,
-    }));
+    const ratings = probs.map((p) => p.rating).filter(Boolean);
+    if (!ratings.length) return [];
+    const maxR = Math.max(...ratings);
+    const topBucket = Math.ceil(maxR / 200) * 200;
+    const buckets = [];
+    for (let lo = 800; lo < topBucket; lo += 200) {
+      const hi = lo + 199;
+      const isLast = lo + 200 >= topBucket;
+      buckets.push({
+        label: isLast ? `${lo}+` : `${lo}–${hi}`,
+        lo,
+        hi: isLast ? 9999 : hi,
+        color: diffColor(lo + 100),
+        count: probs.filter((p) => p.rating >= lo && p.rating <= (isLast ? 9999 : hi)).length,
+      });
+    }
+    return buckets;
   }
 
   function effectiveTags(problem, overrides = {}) {
@@ -81,17 +94,18 @@ import { PROBLEMS, TAG_GROUPS } from "./data";
     return Object.values(map).map((m) => ({ ...m, avg: Math.round(m.sum / m.count) }));
   }
 
-  // core topics shown on the radar (skill = avg solved difficulty, more differentiated than raw max)
+  // core topics for the recommend stub topic picker
   const CORE = ["DP","Greedy","Math","Graphs","Data Structures","Binary Search","Constructive","Number Theory"];
   function radarTopics(probs = PROBLEMS) {
     const stats = topicStats(probs);
-    const byName = Object.fromEntries(stats.map((s) => [s.name, s]));
-    return CORE.map((name) => {
-      const s = byName[name] || { name, count: 0, max: 0, avg: 0 };
-      // skill 0..1 from average solved difficulty over the 1200..1850 window
-      const skill = s.count ? Math.max(0.1, Math.min(1, (s.avg - 1200) / (1850 - 1200))) : 0;
-      return { name, count: s.count, max: s.max || 0, avg: s.avg || 0, skill };
+    const lo = 800;
+    const hi = probs.reduce((m, p) => (p.rating ? Math.max(m, p.rating) : m), lo + 1);
+    const range = hi - lo;
+    const topics = stats.map((s) => {
+      const skill = s.count ? Math.max(0.05, Math.min(1, (s.avg - lo) / range)) : 0;
+      return { name: s.name, count: s.count, max: s.max || 0, avg: s.avg || 0, skill };
     });
+    return { topics, lo, hi };
   }
 
   // weakest topics: lowest AVERAGE solved difficulty (penalize few solves slightly)
@@ -128,15 +142,19 @@ import { PROBLEMS, TAG_GROUPS } from "./data";
     return { solved, topics: tagSet.size, avgRating, maxSolved, avgAttempts, firstTry };
   }
 
-  // recent solves (sorted desc by date)
+  // recent solves — use exact timestamp when available, fall back to date string
   function recent(n = 5, probs = PROBLEMS) {
-    return probs.slice().sort((a, b) => (a.solvedAt < b.solvedAt ? 1 : -1)).slice(0, n);
+    return probs.slice().sort((a, b) => {
+      const ta = a.solvedAtTs ?? dateMs(a.solvedAt);
+      const tb = b.solvedAtTs ?? dateMs(b.solvedAt);
+      return tb - ta;
+    }).slice(0, n);
   }
 
   // rating history filtered to a window (null = all)
   function ratingInRange(history, days) {
     if (!days) return history.slice();
-    const cutoff = NOW_MS - days * DAY_MS;
+    const cutoff = nowMs() - days * DAY_MS;
     return history.filter((h) => dateMs(h.date) >= cutoff);
   }
 
@@ -146,7 +164,7 @@ import { PROBLEMS, TAG_GROUPS } from "./data";
     return `${months[month - 1]} ${day}, ${year}`;
   }
   function relDate(iso) {
-    const days = Math.round((NOW_MS - dateMs(iso)) / DAY_MS);
+    const days = Math.round((nowMs() - dateMs(iso)) / DAY_MS);
     if (days <= 0) return "today";
     if (days === 1) return "yesterday";
     if (days < 7) return days + "d ago";

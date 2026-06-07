@@ -1,9 +1,8 @@
 "use client";
 
 import React from "react";
-import { USER, RATING_HISTORY, PROBLEMS, TAG_GROUPS } from "./data.js";
+import { TAG_GROUPS } from "./data.js";
 import {
-  CORE,
   difficultyDistribution,
   diffColor,
   fmtDate,
@@ -109,15 +108,6 @@ function WeakPoints({ topics }) {
   );
 }
 
-const ALL_TAG_OPTIONS = Array.from(new Set([
-  ...Object.keys(TAG_GROUPS),
-  ...PROBLEMS.flatMap((p) => p.tags),
-])).sort((a, b) => {
-  const aa = (TAG_GROUPS[a] || a).toLowerCase();
-  const bb = (TAG_GROUPS[b] || b).toLowerCase();
-  return aa.localeCompare(bb);
-});
-
 function EditableTagList({ problem, onSaveTags }) {
   function removeTag(tag) {
     onSaveTags(problem.id, problem.tags.filter((t) => t !== tag));
@@ -135,7 +125,7 @@ function EditableTagList({ problem, onSaveTags }) {
   );
 }
 
-function TagPicker({ problem, onSaveTags }) {
+function TagPicker({ problem, allTagOptions, onSaveTags }) {
   const [open, setOpen] = React.useState(false);
   const rootRef = React.useRef(null);
 
@@ -160,7 +150,7 @@ function TagPicker({ problem, onSaveTags }) {
     setOpen(false);
   }
 
-  const availableTags = ALL_TAG_OPTIONS.filter((t) => !problem.tags.includes(t));
+  const availableTags = (allTagOptions ?? []).filter((t) => !problem.tags.includes(t));
 
   return (
     <div ref={rootRef} onClick={(e) => e.stopPropagation()} style={{ position: "relative" }}>
@@ -187,19 +177,19 @@ function TagPicker({ problem, onSaveTags }) {
   );
 }
 
-function RecentTags({ problem, onSaveTags }) {
+function RecentTags({ problem, allTagOptions, onSaveTags }) {
   return (
     <div className="recent-tag-lane" onClick={(e) => e.stopPropagation()}>
       <EditableTagList problem={problem} onSaveTags={onSaveTags} />
       <div className="recent-tag-meta">
         <span className="recent-solved-age">{relDate(problem.solvedAt)}</span>
-        <TagPicker problem={problem} onSaveTags={onSaveTags} />
+        <TagPicker problem={problem} allTagOptions={allTagOptions} onSaveTags={onSaveTags} />
       </div>
     </div>
   );
 }
 
-function RecentList({ problems, onOpen, onViewAll, onSaveTags }) {
+function RecentList({ problems, allTagOptions, onOpen, onViewAll, onSaveTags }) {
   return (
     <div className="panel animate-in" style={{ padding: 20 }}>
       <div className="card-head">
@@ -227,7 +217,7 @@ function RecentList({ problems, onOpen, onViewAll, onSaveTags }) {
                   style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }} />
               )}
             </div>
-            <RecentTags problem={p} onSaveTags={onSaveTags} />
+            <RecentTags problem={p} allTagOptions={allTagOptions} onSaveTags={onSaveTags} />
           </div>
         ))}
       </div>
@@ -330,20 +320,19 @@ function Empty({ msg, h = 150 }) {
   );
 }
 
-function Dashboard({ tagOverrides = {}, onSaveTags, onOpenProblem, onGoAllSolved }) {
-  const user = USER;
+function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {}, allTagOptions = [], onSaveTags, onOpenProblem, onGoAllSolved }) {
   const [range, setRange] = React.useState(RANGES[4]); // All
 
-  const allProblems = withTagOverrides(PROBLEMS, tagOverrides);
+  const allProblems = withTagOverrides(problems, tagOverrides);
   const windowed = withinDays(allProblems, range.days);
   const hasData = windowed.length > 0;
-  const radar = radarTopics(windowed);
+  const { topics: radarTopicList, lo: radarLo, hi: radarHi } = radarTopics(windowed);
   const diff = difficultyDistribution(windowed);
   const types = typeDistribution(7, windowed);
   const stats = topicStats(windowed);
   const weak = hasData ? weakest(4, windowed) : [];
   const recentList = recent(5, allProblems);
-  const history = ratingInRange(RATING_HISTORY, range.days);
+  const history = ratingInRange(ratingHistory, range.days);
   const periodDelta = history.length >= 2 ? history[history.length - 1].rating - history[0].rating : null;
 
   return (
@@ -388,7 +377,7 @@ function Dashboard({ tagOverrides = {}, onSaveTags, onOpenProblem, onGoAllSolved
             <span className="card-title">Skill by topic</span>
             <span className="label">avg difficulty</span>
           </div>
-          {hasData ? <SkillRadar topics={radar} /> : <Empty msg="Nothing solved in this period." h={300} />}
+          {hasData ? <SkillRadar topics={radarTopicList} lo={radarLo} hi={radarHi} /> : <Empty msg="Nothing solved in this period." h={300} />}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           <div className="panel animate-in" style={{ padding: 20 }}>
@@ -418,7 +407,7 @@ function Dashboard({ tagOverrides = {}, onSaveTags, onOpenProblem, onGoAllSolved
             </div>}
       </div>
 
-      <RecentList problems={recentList} onOpen={onOpenProblem} onViewAll={onGoAllSolved} onSaveTags={onSaveTags} />
+      <RecentList problems={recentList} allTagOptions={allTagOptions} onOpen={onOpenProblem} onViewAll={onGoAllSolved} onSaveTags={onSaveTags} />
       <RecommendStub />
     </div>
   );

@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import React from "react";
-import { PROBLEMS, TAG_GROUPS } from "./data.js";
+import { TAG_GROUPS } from "./data.js";
 import { fmtDate, relDate, withTagOverrides } from "./lib.js";
 import { DiffBadge, Latex, Tag } from "./components.jsx";
 
@@ -13,15 +13,6 @@ const ProblemNoteEditor = dynamic(() => import("./ProblemNoteEditor.jsx"), {
       <div className="problem-note-editor problem-note-editor-empty">Loading notes...</div>
     </div>
   ),
-});
-
-const ALL_TAG_OPTIONS = Array.from(new Set([
-  ...Object.keys(TAG_GROUPS),
-  ...PROBLEMS.flatMap((p) => p.tags),
-])).sort((a, b) => {
-  const aa = (TAG_GROUPS[a] || a).toLowerCase();
-  const bb = (TAG_GROUPS[b] || b).toLowerCase();
-  return aa.localeCompare(bb);
 });
 
 /* ============================================================
@@ -49,7 +40,7 @@ function truncate(s, n) {
   return cut.trim() + "…";
 }
 
-function TagEditor({ problemId, tags, onSaveTags }) {
+function TagEditor({ problemId, tags, allTagOptions, onSaveTags }) {
   const [open, setOpen] = React.useState(false);
   const rootRef = React.useRef(null);
 
@@ -78,7 +69,7 @@ function TagEditor({ problemId, tags, onSaveTags }) {
     setOpen(false);
   }
 
-  const availableTags = ALL_TAG_OPTIONS.filter((t) => !tags.includes(t));
+  const availableTags = (allTagOptions ?? []).filter((t) => !tags.includes(t));
 
   return (
     <div ref={rootRef} style={{ position: "relative" }} onClick={(e) => e.stopPropagation()}>
@@ -127,7 +118,7 @@ function TagEditor({ problemId, tags, onSaveTags }) {
 }
 
 /* ---------------- detail window ---------------- */
-function ProblemWindow({ problem, notes, tagOverrides = {}, onClose, onSave, onSaveTags }) {
+function ProblemWindow({ problem, notes, tagOverrides = {}, allTagOptions, onClose, onSave, onSaveTags }) {
   const effectiveProblem = { ...problem, tags: tagOverrides[problem.id] || problem.tags };
   const note = effNote(problem, notes);
 
@@ -160,7 +151,12 @@ function ProblemWindow({ problem, notes, tagOverrides = {}, onClose, onSave, onS
         <div className="panel animate-in" style={{ padding: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <DiffBadge rating={effectiveProblem.rating} />
-            <a href="#" onClick={(e) => e.preventDefault()} style={{ marginLeft: "auto", fontSize: 12.5, color: "var(--accent-text)", textDecoration: "none" }}>
+            <a
+              href={`https://codeforces.com/problemset/problem/${problem.contestId}/${problem.index}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ marginLeft: "auto", fontSize: 12.5, color: "var(--accent-text)", textDecoration: "none" }}
+            >
               open on codeforces ↗
             </a>
           </div>
@@ -172,7 +168,7 @@ function ProblemWindow({ problem, notes, tagOverrides = {}, onClose, onSave, onS
           {/* tags */}
           <div style={{ marginTop: 12 }}>
             <div className="label" style={{ marginBottom: 8 }}>Tags</div>
-            <TagEditor problemId={problem.id} tags={effectiveProblem.tags} onSaveTags={onSaveTags} />
+            <TagEditor problemId={problem.id} tags={effectiveProblem.tags} allTagOptions={allTagOptions} onSaveTags={onSaveTags} />
           </div>
 
           {/* meta grid */}
@@ -212,8 +208,8 @@ const COLS = [
   { key: "solvedAt", label: "Solved", sortable: true, align: "right" },
 ];
 
-function AllSolved({ notes, tagOverrides = {}, onOpen }) {
-  const all = React.useMemo(() => withTagOverrides(PROBLEMS, tagOverrides), [tagOverrides]);
+function AllSolved({ problems = [], notes, tagOverrides = {}, allTagOptions = [], onOpen }) {
+  const all = React.useMemo(() => withTagOverrides(problems, tagOverrides), [problems, tagOverrides]);
   const [q, setQ] = React.useState("");
   const [sort, setSort] = React.useState({ key: "solvedAt", dir: -1 });
   const [activeTags, setActiveTags] = React.useState([]);
