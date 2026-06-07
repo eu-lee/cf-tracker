@@ -36,9 +36,11 @@ function preserveSelection(tr, from) {
   tr.setSelection(TextSelection.near(tr.doc.resolve(mapped), -1));
 }
 
-function migrateInlineMathStrings(editor) {
+// `skipCursor` keeps the one raw box being edited untouched: any match whose
+// delimiters straddle the cursor is left as raw so only that box stays open.
+function migrateInlineMathStrings(editor, skipCursor = null) {
   const { inlineMath } = editor.schema.nodes;
-  if (!inlineMath) return;
+  if (!inlineMath) return false;
 
   const replacements = [];
   editor.state.doc.descendants((node, pos) => {
@@ -50,11 +52,14 @@ function migrateInlineMathStrings(editor) {
       const end = start + match[0].length;
       const latex = match[1].trim();
       if (!latex) continue;
-      replacements.push({ from: pos + start, to: pos + end, latex });
+      const from = pos + start;
+      const to = pos + end;
+      if (skipCursor != null && skipCursor > from && skipCursor < to) continue;
+      replacements.push({ from, to, latex });
     }
   });
 
-  if (!replacements.length) return;
+  if (!replacements.length) return false;
 
   const selectionFrom = editor.state.selection.from;
   const tr = editor.state.tr;
@@ -64,11 +69,12 @@ function migrateInlineMathStrings(editor) {
   preserveSelection(tr, selectionFrom);
   tr.setMeta("addToHistory", false);
   editor.view.dispatch(tr);
+  return true;
 }
 
-function migrateBlockMathStrings(editor) {
+function migrateBlockMathStrings(editor, skipCursor = null) {
   const { blockMath } = editor.schema.nodes;
-  if (!blockMath) return;
+  if (!blockMath) return false;
 
   const replacements = [];
   editor.state.doc.descendants((node, pos) => {
@@ -76,10 +82,11 @@ function migrateBlockMathStrings(editor) {
     const text = node.textContent.trim();
     const match = text.match(/^\$\$([\s\S]+)\$\$$/);
     if (!match) return;
+    if (skipCursor != null && skipCursor > pos && skipCursor < pos + node.nodeSize) return;
     replacements.push({ pos, size: node.nodeSize, latex: match[1].trim() });
   });
 
-  if (!replacements.length) return;
+  if (!replacements.length) return false;
 
   const selectionFrom = editor.state.selection.from;
   const tr = editor.state.tr;
@@ -89,11 +96,13 @@ function migrateBlockMathStrings(editor) {
   preserveSelection(tr, selectionFrom);
   tr.setMeta("addToHistory", false);
   editor.view.dispatch(tr);
+  return true;
 }
 
-function renderMathStrings(editor) {
-  migrateInlineMathStrings(editor);
-  migrateBlockMathStrings(editor);
+function renderMathStrings(editor, skipCursor = null) {
+  const inline = migrateInlineMathStrings(editor, skipCursor);
+  const block = migrateBlockMathStrings(editor, skipCursor);
+  return inline || block;
 }
 
 function selectionInsideRawMath(editor, kind) {
@@ -102,7 +111,11 @@ function selectionInsideRawMath(editor, kind) {
   if (!parent.isTextblock) return false;
 
   const text = parent.textContent;
-  const offset = $from.parentOffset;
+  // Measure the cursor in the same coordinate space as `text`: rendered math are
+  // atom nodes (0 chars in textContent but 1 ProseMirror position each), so
+  // parentOffset would drift right of the string index whenever earlier inline
+  // math exists in this block. textBetween skips atoms exactly like textContent.
+  const offset = parent.textBetween(0, $from.parentOffset, "").length;
 
   if (kind === "block") {
     return text.startsWith("$$") && text.endsWith("$$") && offset >= 2 && offset <= text.length - 2;
@@ -181,13 +194,15 @@ export default function ProblemNoteEditor({ value, onChange }) {
       const raw = kind === "block" ? `$$${latex}$$` : `$${latex}$`;
       const bodyStart = pos + (kind === "block" ? 2 : 1);
       const cursorPos = bodyStart + latex.length;
+      // Set before dispatching: onUpdate fires synchronously inside run(), and its
+      // migrate-back guard checks this ref — leaving it unset re-renders the raw text.
+      activeRawMathRef.current = { kind };
       editor
         .chain()
         .focus()
         .insertContentAt({ from: pos, to: pos + nodeSize }, raw)
         .setTextSelection(cursorPos)
         .run();
-      activeRawMathRef.current = { kind };
     }
 
     function editMath(event) {
@@ -230,13 +245,15 @@ export default function ProblemNoteEditor({ value, onChange }) {
     if (!editor) return undefined;
 
     function renderWhenMathLosesSelection({ editor }) {
-      const active = activeRawMathRef.current;
-      if (!active) return;
-      if (selectionInsideRawMath(editor, active.kind)) return;
+      // Re-render every raw box except the one the cursor sits in, so moving off a
+      // box (including by opening another) collapses it back to rendered math.
+      const cursor = editor.state.selection.from;
+      const changed = renderMathStrings(editor, cursor);
 
-      activeRawMathRef.current = null;
-      renderMathStrings(editor);
-      onChange(savePayload(editor));
+      if (!selectionInsideRawMath(editor, "inline") && !selectionInsideRawMath(editor, "block")) {
+        activeRawMathRef.current = null;
+      }
+      if (changed) onChange(savePayload(editor));
     }
 
     editor.on("selectionUpdate", renderWhenMathLosesSelection);

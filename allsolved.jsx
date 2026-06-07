@@ -280,19 +280,25 @@ function AllSolved({ notes, tagOverrides = {}, onOpen }) {
           {allTags.map((t) => (
             <Tag key={t} onClick={() => toggleTag(t)} active={activeTags.includes(t)}>{TAG_GROUPS[t] || t}</Tag>
           ))}
-          {activeTags.length > 0 && (
-            <button className="btn" onClick={() => setActiveTags([])} style={{ padding: "3px 10px", fontSize: 12 }}>clear</button>
-          )}
+          <button
+            className="btn"
+            onClick={() => setActiveTags([])}
+            style={{
+              padding: "3px 10px", fontSize: 12,
+              visibility: activeTags.length > 0 ? "visible" : "hidden",
+              pointerEvents: activeTags.length > 0 ? "auto" : "none",
+            }}
+            aria-hidden={activeTags.length === 0}
+          >clear</button>
         </div>
       </div>
 
       {/* count */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "0 4px" }}>
+      <div style={{ padding: "0 4px" }}>
         <span style={{ fontSize: 13, color: "var(--text-dim)" }}>
           <span className="mono" style={{ fontWeight: 600, color: "var(--text)" }}>{rows.length}</span> problem{rows.length !== 1 ? "s" : ""}
           {activeTags.length > 0 && <span style={{ color: "var(--text-faint)" }}> · filtered</span>}
         </span>
-        <span className="label">click a row for detail & notes</span>
       </div>
 
       {/* table */}

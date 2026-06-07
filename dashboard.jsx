@@ -84,10 +84,9 @@ function WeakPoints({ topics }) {
     <div className="panel animate-in" style={{ padding: 20 }}>
       <div className="card-head">
         <span className="card-title">Weak points</span>
-        <span className="label">focus next</span>
       </div>
       <p style={{ margin: "0 0 16px", fontSize: 12.5, color: "var(--text-faint)", lineHeight: 1.5 }}>
-        Topics where your <em>average</em> solved difficulty is lowest — the most reliable signal of where to train.
+        Lowest average solved difficulty.
       </p>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {topics.map((t, i) => (
@@ -408,7 +407,7 @@ function Dashboard({ tagOverrides = {}, onSaveTags, onOpenProblem, onGoAllSolved
         {hasData
           ? <WeakPoints topics={weak} />
           : <div className="panel animate-in" style={{ padding: 20 }}>
-              <div className="card-head"><span className="card-title">Weak points</span><span className="label">focus next</span></div>
+              <div className="card-head"><span className="card-title">Weak points</span></div>
               <Empty msg="Nothing solved in this period." />
             </div>}
         {hasData
