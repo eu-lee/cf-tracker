@@ -3,7 +3,7 @@
    ============================================================ */
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { fmtDate, rankOf } from "./lib.js";
 
 /* ---------------- Rating line chart ---------------- */
@@ -15,6 +15,7 @@ function shortDateTs(ts) {
 
 export function RatingChart({ history }) {
   const [hover, setHover] = useState(null);
+  const svgRef = useRef(null);
   const W = 760, H = 300, padL = 8, padR = 8, padT = 18, padB = 44;
   const ratings = history.map((h) => h.rating);
   const minR = Math.min(...ratings), maxR = Math.max(...ratings);
@@ -55,9 +56,21 @@ export function RatingChart({ history }) {
         return { px: padL + frac * (W - padL - padR), ts: tMin + frac * (tMax - tMin) };
       });
 
+  function handleMove(e) {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect || !rect.width) return;
+    const svgX = ((e.clientX - rect.left) / rect.width) * W;
+    let best = 0, bestD = Infinity;
+    for (let i = 0; i < history.length; i++) {
+      const d = Math.abs(x(i) - svgX);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    setHover(best);
+  }
+
   return (
     <div style={{ position: "relative", width: "100%" }}>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}
+      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}
         onMouseLeave={() => setHover(null)}>
         <defs>
           <linearGradient id="ratingFill" x1="0" y1="0" x2="0" y2="1">
@@ -97,15 +110,14 @@ export function RatingChart({ history }) {
           const c = rankOf(h.rating).color;
           const active = hover === i;
           return (
-            <g key={i}>
-              <circle cx={x(i)} cy={y(h.rating)} r={active ? 5.5 : 3.4}
-                fill="var(--panel)" stroke={c} strokeWidth="2.2"
-                style={{ transition: "r .12s" }} />
-              <rect x={x(i) - 16} y={padT} width="32" height={H - padT - padB}
-                fill="transparent" onMouseEnter={() => setHover(i)} style={{ cursor: "crosshair" }} />
-            </g>
+            <circle key={i} cx={x(i)} cy={y(h.rating)} r={active ? 5.5 : 3.4}
+              fill="var(--panel)" stroke={c} strokeWidth="2.2"
+              style={{ transition: "r .12s" }} />
           );
         })}
+        {/* single overlay: hover snaps to the nearest point by x (split at midpoints) */}
+        <rect x={padL} y={padT} width={W - padL - padR} height={H - padT - padB}
+          fill="transparent" onMouseMove={handleMove} style={{ cursor: "crosshair" }} />
         {hover != null && (
           <line x1={x(hover)} y1={padT} x2={x(hover)} y2={H - padB} stroke="var(--text-faint)"
             strokeWidth="1" strokeDasharray="3 3" />
