@@ -283,12 +283,44 @@ body {
   z-index: 25;
   width: min(240px, calc(100vw - 48px));
   max-height: 280px;
-  overflow: auto;
+  overflow: hidden;
   padding: 6px;
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--panel);
   box-shadow: var(--shadow-pop);
+}
+
+.recent-tag-menu-search {
+  position: relative;
+  z-index: 1;
+  padding: 0 0 6px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border-2);
+  margin-bottom: 4px;
+}
+
+.recent-tag-menu-search input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  font-size: 12.5px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-family: inherit;
+  outline: none;
+}
+
+.recent-tag-menu-search input:focus {
+  border-color: var(--text-faint);
+}
+
+.recent-tag-menu-list {
+  max-height: 222px;
+  overflow-y: auto;
+  padding-right: 2px;
 }
 
 .recent-tag-menu-item {

@@ -45,13 +45,18 @@ function TagEditor({ problemId, tags, allTagOptions, onSaveTags }) {
   const [query, setQuery] = React.useState("");
   const rootRef = React.useRef(null);
 
+  function closeMenu() {
+    setOpen(false);
+    setQuery("");
+  }
+
   React.useEffect(() => {
-    if (!open) { setQuery(""); return; }
+    if (!open) return;
     function onPointerDown(e) {
-      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+      if (rootRef.current && !rootRef.current.contains(e.target)) closeMenu();
     }
     function onKeyDown(e) {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") closeMenu();
     }
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
@@ -67,7 +72,7 @@ function TagEditor({ problemId, tags, allTagOptions, onSaveTags }) {
 
   function addTag(tag) {
     onSaveTags(problemId, [...tags, tag]);
-    setOpen(false);
+    closeMenu();
   }
 
   const available = (allTagOptions ?? []).filter((t) => !tags.includes(t));
@@ -113,14 +118,14 @@ function TagEditor({ problemId, tags, allTagOptions, onSaveTags }) {
             aria-label="Add tag"
             aria-haspopup="listbox"
             aria-expanded={open}
-            onClick={() => setOpen((v) => !v)}
+            onClick={() => open ? closeMenu() : setOpen(true)}
             style={{ height: 24, padding: "2px 10px", fontSize: 12 }}
           >+</button>
         </div>
       </div>
       {open && (
         <div className="recent-tag-menu" role="listbox" aria-label="Codeforces tags" style={{ right: 0, left: "auto", top: "calc(100% + 6px)" }}>
-          <div style={{ position: "sticky", top: 0, zIndex: 1, background: "var(--panel)", paddingBottom: 4, marginBottom: 2 }}>
+          <div className="recent-tag-menu-search">
             <input
               autoFocus
               type="text"
@@ -129,26 +134,23 @@ function TagEditor({ problemId, tags, allTagOptions, onSaveTags }) {
               onKeyDown={onSearchKeyDown}
               placeholder="Search tags…"
               aria-label="Search tags"
-              style={{
-                width: "100%", boxSizing: "border-box", padding: "6px 9px", fontSize: 12.5,
-                borderRadius: 6, border: "1px solid var(--border)",
-                background: "var(--bg)", color: "var(--text)", fontFamily: "inherit",
-              }}
             />
           </div>
-          {availableTags.map((t) => (
-            <button key={t} type="button" className="recent-tag-menu-item" onClick={() => addTag(t)}>
-              {TAG_GROUPS[t] || t}
-            </button>
-          ))}
-          {showCustom && (
-            <button type="button" className="recent-tag-menu-item" onClick={() => addTag(customTag)}>
-              + Add “{customTag}”
-            </button>
-          )}
-          {availableTags.length === 0 && !showCustom && (
-            <div className="recent-tag-menu-empty">{q ? "No matching tags" : "No more tags"}</div>
-          )}
+          <div className="recent-tag-menu-list">
+            {availableTags.map((t) => (
+              <button key={t} type="button" className="recent-tag-menu-item" onClick={() => addTag(t)}>
+                {TAG_GROUPS[t] || t}
+              </button>
+            ))}
+            {showCustom && (
+              <button type="button" className="recent-tag-menu-item" onClick={() => addTag(customTag)}>
+                + Add “{customTag}”
+              </button>
+            )}
+            {availableTags.length === 0 && !showCustom && (
+              <div className="recent-tag-menu-empty">{q ? "No matching tags" : "No more tags"}</div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -373,14 +375,13 @@ function AllSolved({ problems = [], notes, tagOverrides = {}, allTagOptions = []
                       )}
                     </td>
                     <td style={{ padding: "13px 16px" }}><DiffBadge rating={p.rating} size="sm" /></td>
-                    <td style={{ padding: "13px 16px" }}>
-                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", maxWidth: 220 }}>
-                        {p.tags.slice(0, 3).map((t) => (
+                    <td style={{ padding: "13px 16px", minWidth: 280 }}>
+                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", maxWidth: 560 }}>
+                        {p.tags.map((t) => (
                           <Tag key={t} onClick={() => toggleTag(t)} active={activeTags.includes(t)}>
                             {(TAG_GROUPS[t] || t)}
                           </Tag>
                         ))}
-                        {p.tags.length > 3 && <span className="mono" style={{ fontSize: 10.5, color: "var(--text-faint)" }}>+{p.tags.length - 3}</span>}
                       </div>
                     </td>
                     <td className="mono" style={{ padding: "13px 16px", textAlign: "right", fontSize: 13, color: p.attempts === 1 ? "var(--good)" : "var(--text-dim)" }}>{p.attempts}</td>

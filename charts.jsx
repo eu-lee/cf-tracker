@@ -156,18 +156,22 @@ export function Tooltip({ children, xPct }) {
 }
 
 /* ---------------- Skills radar ---------------- */
-export function SkillRadar({ topics, lo = 800, hi = 2000 }) {
+export function SkillRadar({ topics, lo = 800, hi = 2000, rating = 0, showRating = false }) {
   const [hover, setHover] = useState(null);
   const size = 320, cx = size / 2, cy = size / 2 + 6, R = 200;
   const n = topics.length;
+  const range = Math.max(1, hi - lo);
   const angle = (i) => (Math.PI * 2 * i) / n - Math.PI / 2;
   const pt = (i, r) => [cx + Math.cos(angle(i)) * R * r, cy + Math.sin(angle(i)) * R * r];
   const rings = [0.25, 0.5, 0.75, 1];
 
   // solved topics sit at their skill radius; unsolved collapse to the exact
   // center so a wall of empty axes doesn't bunch into a ring of dots
-  const radiusOf = (t) => (t.count ? Math.max(0.05, t.skill) : 0);
+  const radiusForScore = (score) => Math.max(0, Math.min(1, (score - lo) / range));
+  const radiusOf = (t) => (t.count ? Math.max(0.05, radiusForScore(t.score || 0)) : 0);
   const poly = topics.map((t, i) => pt(i, radiusOf(t)).map((v) => v.toFixed(1)).join(",")).join(" ");
+  const ratingRadius = radiusForScore(rating || 0);
+  const ratingPoly = topics.map((_, i) => pt(i, ratingRadius).map((v) => v.toFixed(1)).join(",")).join(" ");
 
   // ring difficulty labels sit just right of the top spoke (cx, cy - R*frac)
   const ringLabels = rings.map((r) => ({
@@ -190,12 +194,17 @@ export function SkillRadar({ topics, lo = 800, hi = 2000 }) {
         const [px, py] = pt(i, 1);
         return <line key={i} x1={cx} y1={cy} x2={px} y2={py} stroke="var(--border-2)" strokeWidth="1" />;
       })}
+      {/* current rating boundary */}
+      {showRating && rating > 0 && (
+        <polygon points={ratingPoly} fill="var(--good)" fillOpacity="0.08" stroke="var(--good)"
+          strokeWidth="1.8" strokeDasharray="7 5" strokeLinejoin="round" />
+      )}
       {/* skill polygon */}
       <polygon points={poly} fill="var(--accent)" fillOpacity="0.16" stroke="var(--accent)" strokeWidth="2" strokeLinejoin="round" />
       {/* vertices — none for unsolved topics (they'd pile up at the center) */}
       {topics.map((t, i) => {
         if (!t.count) return null;
-        const [px, py] = pt(i, Math.max(0.05, t.skill));
+        const [px, py] = pt(i, radiusOf(t));
         return <circle key={i} cx={px} cy={py} r={hover === i ? 6 : 3.8} fill="var(--panel)"
           stroke="var(--accent)" strokeWidth="2"
           onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} style={{ cursor: "pointer" }} />;

@@ -130,9 +130,12 @@ const GET_PROBLEM_SPECIALS = [
 // ThemeCP-style picker: an unsolved problem near your level for a chosen theme.
 function GetProblem({ problems, topics, weakestName, userRating }) {
   const [value, setValue] = React.useState("__weak__");
+  const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState(null);
   const [result, setResult] = React.useState(null);
+  const pickerRef = React.useRef(null);
 
   const solvedIds = React.useMemo(() => new Set(problems.map((p) => `${p.contestId}${p.index}`)), [problems]);
   const scoreByName = React.useMemo(() => {
@@ -142,6 +145,37 @@ function GetProblem({ problems, topics, weakestName, userRating }) {
   }, [topics]);
 
   const options = [...GET_PROBLEM_SPECIALS, ...topics.map((t) => ({ value: t.name, label: t.name }))];
+  const selectedOption = options.find((o) => o.value === value) || options[0];
+  const optionQuery = query.trim().toLowerCase();
+  const visibleOptions = optionQuery
+    ? options.filter((o) => o.label.toLowerCase().includes(optionQuery))
+    : options;
+
+  function closePicker() {
+    setOpen(false);
+    setQuery("");
+  }
+
+  React.useEffect(() => {
+    if (!open) return;
+    function onPointerDown(e) {
+      if (pickerRef.current && !pickerRef.current.contains(e.target)) closePicker();
+    }
+    function onKeyDown(e) {
+      if (e.key === "Escape") closePicker();
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  function chooseOption(nextValue) {
+    setValue(nextValue);
+    closePicker();
+  }
 
   async function generate() {
     setLoading(true);
@@ -180,13 +214,61 @@ function GetProblem({ problems, topics, weakestName, userRating }) {
         <span className="label">unsolved · near your level</span>
       </div>
       <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-        <select value={value} onChange={(e) => setValue(e.target.value)}
-          style={{
-            flex: 1, minWidth: 0, padding: "8px 10px", fontSize: 13, borderRadius: 8,
-            border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontFamily: "inherit",
-          }}>
-          {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
+        <div ref={pickerRef} style={{ position: "relative", flex: 1, minWidth: 0 }}>
+          <button
+            type="button"
+            className="btn"
+            aria-haspopup="listbox"
+            aria-expanded={open}
+            onClick={() => open ? closePicker() : setOpen(true)}
+            style={{
+              width: "100%", justifyContent: "space-between", padding: "8px 10px",
+              fontSize: 13, background: "var(--bg)",
+            }}
+          >
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {selectedOption.label}
+            </span>
+            <span className="mono" aria-hidden="true" style={{ color: "var(--text-faint)", fontSize: 11 }}>
+              {open ? "↑" : "↓"}
+            </span>
+          </button>
+          {open && (
+            <div className="recent-tag-menu" role="listbox" aria-label="Problem theme" style={{ left: 0, right: "auto", width: "min(320px, calc(100vw - 48px))" }}>
+              <div className="recent-tag-menu-search">
+                <input
+                  autoFocus
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search topics..."
+                  aria-label="Search problem topics"
+                />
+              </div>
+              <div className="recent-tag-menu-list">
+                {visibleOptions.map((o) => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    className="recent-tag-menu-item"
+                    role="option"
+                    aria-selected={o.value === value}
+                    onClick={() => chooseOption(o.value)}
+                    style={{
+                      color: o.value === value ? "var(--text)" : "var(--text-dim)",
+                      background: o.value === value ? "var(--panel-hover)" : "transparent",
+                    }}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+                {visibleOptions.length === 0 && (
+                  <div className="recent-tag-menu-empty">No matching topics</div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
         <button className="btn btn-accent" onClick={generate} disabled={loading}
           style={{ padding: "8px 16px", fontSize: 13, opacity: loading ? 0.6 : 1, whiteSpace: "nowrap" }}>
           {loading ? "…" : "Get →"}
@@ -474,6 +556,7 @@ function RadarFilterDropdown({ allTopics, filter, onChange }) {
 
 function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {}, allTagOptions = [], radarFilter = null, onSaveRadarFilter, onSaveTags, onOpenProblem, onGoAllSolved }) {
   const [range, setRange] = React.useState(RANGES[4]); // All
+  const [showRatingRadar, setShowRatingRadar] = React.useState(false);
 
   const allProblems = withTagOverrides(problems, tagOverrides);
   const windowed = withinDays(allProblems, range.days);
@@ -506,6 +589,9 @@ function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {},
   const recentList = recent(5, allProblems);
   const history = ratingInRange(ratingHistory, range.days);
   const periodDelta = history.length >= 2 ? history[history.length - 1].rating - history[0].rating : null;
+  const radarHiWithRating = user?.rating
+    ? Math.max(radarHi, Math.ceil((user.rating + 100) / 100) * 100)
+    : radarHi;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
@@ -549,6 +635,17 @@ function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {},
             <span className="card-title">Skill by topic</span>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span className="label">est. level</span>
+              {hasData && user?.rating > 0 && (
+                <button
+                  type="button"
+                  className="btn"
+                  aria-pressed={showRatingRadar}
+                  onClick={() => setShowRatingRadar((v) => !v)}
+                  style={{ padding: "5px 9px", fontSize: 12 }}
+                >
+                  {showRatingRadar ? "Hide rating" : "Show rating"}
+                </button>
+              )}
               {hasData && (
                 <RadarFilterDropdown
                   allTopics={radarUniverse}
@@ -560,7 +657,13 @@ function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {},
           </div>
           {hasData
             ? filteredRadarTopics.length >= 3
-              ? <SkillRadar topics={filteredRadarTopics} lo={radarLo} hi={radarHi} />
+              ? <SkillRadar
+                  topics={filteredRadarTopics}
+                  lo={radarLo}
+                  hi={radarHiWithRating}
+                  rating={user?.rating || 0}
+                  showRating={showRatingRadar}
+                />
               : <Empty msg="Select at least 3 topics to render the radar." h={300} />
             : <Empty msg="Nothing solved in this period." h={300} />}
         </div>
