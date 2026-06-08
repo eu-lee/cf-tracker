@@ -2,7 +2,23 @@ import { NextResponse } from "next/server";
 import { createClient } from "../../../lib/supabase/server";
 import { capitalize, isoDate, cfFetch } from "../../../lib/cf";
 
-const FETCH_COUNT = 50;
+// CF allows large page sizes; walk the full submission history in batches
+// (newest-first) until a short page signals the end.
+const BATCH = 2000;
+
+async function fetchAllSubmissions(handle) {
+  const all = [];
+  let from = 1;
+  for (;;) {
+    const page = await cfFetch(
+      `https://codeforces.com/api/user.status?handle=${handle}&from=${from}&count=${BATCH}`
+    );
+    all.push(...page);
+    if (page.length < BATCH) break;
+    from += BATCH;
+  }
+  return all;
+}
 
 export async function POST() {
   const supabase = await createClient();
@@ -23,7 +39,7 @@ export async function POST() {
     [userResult, ratingResult, statusResult] = await Promise.all([
       cfFetch(`https://codeforces.com/api/user.info?handles=${handle}`),
       cfFetch(`https://codeforces.com/api/user.rating?handle=${handle}`),
-      cfFetch(`https://codeforces.com/api/user.status?handle=${handle}&from=1&count=${FETCH_COUNT}`),
+      fetchAllSubmissions(handle),
     ]);
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 502 });
