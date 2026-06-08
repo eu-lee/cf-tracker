@@ -14,7 +14,6 @@ import {
   topicStats,
   totals,
   typeDistribution,
-  weakest,
   withTagOverrides,
   withinDays,
 } from "./lib.js";
@@ -83,27 +82,135 @@ function WeakPoints({ topics }) {
     <div className="panel animate-in" style={{ padding: 20 }}>
       <div className="card-head">
         <span className="card-title">Weak points</span>
+        <span className="label">weakest first</span>
       </div>
-      <p style={{ margin: "0 0 16px", fontSize: 12.5, color: "var(--text-faint)", lineHeight: 1.5 }}>
-        Lowest estimated level (weighted toward your hardest solves).
+      <p style={{ margin: "0 0 14px", fontSize: 12.5, color: "var(--text-faint)", lineHeight: 1.5 }}>
+        Lowest estimated level (weighted toward your hardest solves); untouched topics last.
       </p>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {topics.map((t, i) => (
-          <div key={t.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px",
-            background: "var(--panel-2)", border: "1px solid var(--border-2)", borderRadius: 9 }}>
-            <span className="mono" style={{ fontSize: 12, color: "var(--text-faint)", width: 16 }}>{i + 1}</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{t.name}</div>
-              <div style={{ fontSize: 11.5, color: "var(--text-faint)" }}>
-                {t.count} solved · level <span className="mono" style={{ color: diffColor(t.score) }}>{t.score}</span>
+      {/* ~3 rows visible, scroll for the rest */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 210, overflowY: "auto", paddingRight: 4 }}>
+        {topics.map((t, i) => {
+          const untouched = !t.count;
+          return (
+            <div key={t.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 12px",
+              background: "var(--panel-2)", border: "1px solid var(--border-2)", borderRadius: 9, opacity: untouched ? 0.6 : 1 }}>
+              <span className="mono" style={{ fontSize: 12, color: "var(--text-faint)", width: 16, flexShrink: 0 }}>{i + 1}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-faint)" }}>
+                  {untouched
+                    ? "untouched"
+                    : <>{t.count} solved · level <span className="mono" style={{ color: diffColor(t.score) }}>{t.score}</span></>}
+                </div>
               </div>
             </div>
-            <span className="chip" style={{ color: "var(--accent-text)", borderColor: "var(--accent)", background: "var(--accent-dim)" }}>
-              practice
-            </span>
-          </div>
-        ))}
+          );
+        })}
       </div>
+    </div>
+  );
+}
+
+// Cached full Codeforces problemset (fetched once per session, client-side).
+let _problemset = null;
+async function getProblemset() {
+  if (_problemset) return _problemset;
+  const res = await fetch("https://codeforces.com/api/problemset.problems", { cache: "no-store" });
+  const json = await res.json();
+  if (json.status !== "OK") throw new Error(json.comment || "Codeforces API error");
+  _problemset = (json.result.problems || []).filter((p) => p.rating && p.contestId);
+  return _problemset;
+}
+
+const GET_PROBLEM_SPECIALS = [
+  { value: "__weak__", label: "Weak problem" },
+  { value: "__random__", label: "Random" },
+];
+
+// ThemeCP-style picker: an unsolved problem near your level for a chosen theme.
+function GetProblem({ problems, topics, weakestName, userRating }) {
+  const [value, setValue] = React.useState("__weak__");
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState(null);
+  const [result, setResult] = React.useState(null);
+
+  const solvedIds = React.useMemo(() => new Set(problems.map((p) => `${p.contestId}${p.index}`)), [problems]);
+  const scoreByName = React.useMemo(() => {
+    const m = {};
+    topics.forEach((t) => { m[t.name] = t.score; });
+    return m;
+  }, [topics]);
+
+  const options = [...GET_PROBLEM_SPECIALS, ...topics.map((t) => ({ value: t.name, label: t.name }))];
+
+  async function generate() {
+    setLoading(true);
+    setError(null);
+    try {
+      const all = await getProblemset();
+      let group = null, base;
+      if (value === "__random__") { group = null; base = userRating || 1200; }
+      else if (value === "__weak__") { group = weakestName || null; base = (group && scoreByName[group]) || userRating || 1200; }
+      else { group = value; base = scoreByName[value] || userRating || 1200; }
+
+      const target = Math.round(base / 100) * 100;
+      const inGroup = (p) => !group || p.tags.some((rt) => (TAG_GROUPS[rt] || rt) === group);
+      const unsolved = (p) => !solvedIds.has(`${p.contestId}${p.index}`);
+
+      // at-level to slightly above; widen the ceiling until something matches
+      let pick = null;
+      for (const pad of [100, 250, 400, 800]) {
+        const lo = Math.max(800, target - 100), hi = target + pad;
+        const cands = all.filter((p) => inGroup(p) && unsolved(p) && p.rating >= lo && p.rating <= hi);
+        if (cands.length) { pick = cands[Math.floor(Math.random() * cands.length)]; break; }
+      }
+      if (!pick) { setResult(null); setError("No unsolved problems found — try another theme."); }
+      else setResult(pick);
+    } catch (e) {
+      setError(e.message || "Could not reach Codeforces.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="panel animate-in" style={{ padding: 20 }}>
+      <div className="card-head">
+        <span className="card-title">Get problem</span>
+        <span className="label">unsolved · near your level</span>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+        <select value={value} onChange={(e) => setValue(e.target.value)}
+          style={{
+            flex: 1, minWidth: 0, padding: "8px 10px", fontSize: 13, borderRadius: 8,
+            border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontFamily: "inherit",
+          }}>
+          {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <button className="btn btn-accent" onClick={generate} disabled={loading}
+          style={{ padding: "8px 16px", fontSize: 13, opacity: loading ? 0.6 : 1, whiteSpace: "nowrap" }}>
+          {loading ? "…" : "Get →"}
+        </button>
+      </div>
+
+      {error && <div style={{ marginTop: 14, fontSize: 12.5, color: "var(--bad)" }}>{error}</div>}
+
+      {result && (
+        <a href={`https://codeforces.com/problemset/problem/${result.contestId}/${result.index}`}
+          target="_blank" rel="noopener noreferrer"
+          style={{ display: "block", marginTop: 14, padding: "12px 14px", borderRadius: 9, textDecoration: "none",
+            background: "var(--panel-2)", border: "1px solid var(--border-2)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <DiffBadge rating={result.rating} size="sm" />
+            <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", flex: 1, minWidth: 0,
+              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              <span className="mono" style={{ color: "var(--text-faint)", fontSize: 12, marginRight: 7 }}>{result.contestId}{result.index}</span>
+              {result.name}
+            </span>
+            <span style={{ fontSize: 12, color: "var(--accent-text)" }}>open ↗</span>
+          </div>
+        </a>
+      )}
     </div>
   );
 }
@@ -391,7 +498,11 @@ function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {},
   const diff = difficultyDistribution(windowed);
   const types = typeDistribution(7, windowed);
   const stats = topicStats(windowed);
-  const weak = hasData ? weakest(4, windowed) : [];
+  // weak-points list: solved topics weakest-first, then untouched topics
+  const weakSolved = radarUniverse.filter((t) => t.count > 0).slice().sort((a, b) => a.score - b.score);
+  const untouchedTopics = radarUniverse.filter((t) => t.count === 0);
+  const weakList = [...weakSolved, ...untouchedTopics];
+  const weakestName = weakSolved[0]?.name ?? null;
   const recentList = recent(5, allProblems);
   const history = ratingInRange(ratingHistory, range.days);
   const periodDelta = history.length >= 2 ? history[history.length - 1].rating - history[0].rating : null;
@@ -465,18 +576,21 @@ function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {},
         </div>
       </div>
 
-      {/* weak points + elo */}
+      {/* weak points + get problem | elo */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }} className="grid-2">
-        {hasData
-          ? <WeakPoints topics={weak} />
-          : <div className="panel animate-in" style={{ padding: 20 }}>
-              <div className="card-head"><span className="card-title">Weak points</span></div>
-              <Empty msg="Nothing solved in this period." />
-            </div>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          {hasData
+            ? <WeakPoints topics={weakList} />
+            : <div className="panel animate-in" style={{ padding: 20 }}>
+                <div className="card-head"><span className="card-title">Weak points</span></div>
+                <Empty msg="Nothing solved in this period." />
+              </div>}
+          <GetProblem problems={allProblems} topics={radarUniverse} weakestName={weakestName} userRating={user?.rating} />
+        </div>
         {hasData
           ? <EloByTopic stats={stats} />
           : <div className="panel animate-in" style={{ padding: 20 }}>
-              <div className="card-head"><span className="card-title">Elo by topic</span><span className="label">avg solved difficulty</span></div>
+              <div className="card-head"><span className="card-title">Elo by topic</span><span className="label">estimated level</span></div>
               <Empty msg="Nothing solved in this period." />
             </div>}
       </div>
