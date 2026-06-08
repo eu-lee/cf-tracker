@@ -97,7 +97,9 @@ import { TAG_GROUPS } from "./data";
   function radarTopics(probs = []) {
     const stats = topicStats(probs);
     const lo = 800;
-    const hi = probs.reduce((m, p) => (p.rating ? Math.max(m, p.rating) : m), lo + 1);
+    const maxRating = probs.reduce((m, p) => (p.rating ? Math.max(m, p.rating) : m), lo + 1);
+    // +250 headroom so the strongest topic doesn't peg the outer ring
+    const hi = maxRating + 250;
     const range = hi - lo;
     const topics = stats.map((s) => {
       const skill = s.count ? Math.max(0.05, Math.min(1, (s.avg - lo) / range)) : 0;
