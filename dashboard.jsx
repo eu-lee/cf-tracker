@@ -226,6 +226,7 @@ function RecentList({ problems, allTagOptions, onOpen, onViewAll, onSaveTags }) 
 }
 
 function truncate(s, n) {
+  if (!s || typeof s !== "string") return "";
   const oneLine = s.replace(/\n+/g, " ");
   if (oneLine.length <= n) return oneLine;
   // avoid cutting inside a $...$ — trim to last balanced $
@@ -233,56 +234,6 @@ function truncate(s, n) {
   const dollars = (cut.match(/\$/g) || []).length;
   if (dollars % 2 !== 0) cut = cut.slice(0, cut.lastIndexOf("$"));
   return cut.trim() + "…";
-}
-
-function RecommendStub() {
-  const [rng, setRng] = React.useState([1600, 1800]);
-  const [topic, setTopic] = React.useState("Any topic");
-  const topics = ["Any topic", ...CORE];
-  return (
-    <div className="panel animate-in" style={{ padding: 24, position: "relative", overflow: "hidden" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-            <span className="card-title" style={{ fontSize: 15 }}>Get a new problem</span>
-            <span className="chip" style={{ fontSize: 10.5, color: "var(--accent-text)", borderColor: "var(--accent)", background: "var(--accent-dim)" }}>preview</span>
-          </div>
-          <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--text-faint)", maxWidth: 440, lineHeight: 1.55 }}>
-            Recommend a problem just above your rating to keep the climb steady. Full recommender — themed sets, ladder mode — is coming later.
-          </p>
-        </div>
-      </div>
-
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 20, alignItems: "flex-end", marginTop: 22 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-          <span className="label">Rating range</span>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span className="mono" style={{ fontSize: 14, fontWeight: 600, color: diffColor(rng[0]) }}>{rng[0]}</span>
-            <input type="range" min="800" max="2400" step="100" value={rng[0]}
-              onChange={(e) => setRng([Math.min(+e.target.value, rng[1]), rng[1]])} style={{ accentColor: "var(--accent)", width: 90 }} />
-            <span style={{ color: "var(--text-faint)" }}>–</span>
-            <input type="range" min="800" max="2400" step="100" value={rng[1]}
-              onChange={(e) => setRng([rng[0], Math.max(+e.target.value, rng[0])])} style={{ accentColor: "var(--accent)", width: 90 }} />
-            <span className="mono" style={{ fontSize: 14, fontWeight: 600, color: diffColor(rng[1]) }}>{rng[1]}</span>
-          </div>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-          <span className="label">Topic</span>
-          <select value={topic} onChange={(e) => setTopic(e.target.value)} className="btn" style={{ padding: "7px 11px" }}>
-            {topics.map((t) => <option key={t}>{t}</option>)}
-          </select>
-        </div>
-        <button className="btn btn-accent" style={{ padding: "9px 18px" }} onClick={() => {}}>
-          Suggest a problem
-        </button>
-      </div>
-      <div style={{ marginTop: 20, padding: "14px 16px", borderRadius: 10, border: "1px dashed var(--border)",
-        background: "var(--panel-2)", display: "flex", alignItems: "center", gap: 12, color: "var(--text-faint)", fontSize: 13 }}>
-        <span className="mono" style={{ fontSize: 12 }}>[ suggestion ]</span>
-        Pick a range and the recommender will surface an unsolved problem here.
-      </div>
-    </div>
-  );
 }
 
 const RANGES = [
@@ -320,13 +271,82 @@ function Empty({ msg, h = 150 }) {
   );
 }
 
-function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {}, allTagOptions = [], onSaveTags, onOpenProblem, onGoAllSolved }) {
+function RadarFilterDropdown({ allTopics, filter, onChange }) {
+  const [open, setOpen] = React.useState(false);
+  const rootRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    function onPointerDown(e) {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+    }
+    function onKeyDown(e) { if (e.key === "Escape") setOpen(false); }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  const isAll = filter === null || filter.length === allTopics.length;
+  const selected = new Set(filter ?? allTopics.map((t) => t.name));
+
+  function toggle(name) {
+    const next = new Set(selected);
+    next.has(name) ? next.delete(name) : next.add(name);
+    onChange(next.size === allTopics.length ? null : [...next]);
+  }
+
+  return (
+    <div ref={rootRef} style={{ position: "relative" }}>
+      <button className="btn" onClick={() => setOpen((v) => !v)}
+        style={{ padding: "5px 10px", fontSize: 12 }}>
+        {isAll ? "Solved topics" : `${selected.size} / ${allTopics.length}`} ▾
+      </button>
+      {open && (
+        <div style={{
+          position: "absolute", right: 0, top: "calc(100% + 6px)", zIndex: 30,
+          background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10,
+          boxShadow: "var(--shadow-pop)", padding: "8px 4px", minWidth: 180, maxHeight: 280,
+          overflowY: "auto", display: "flex", flexDirection: "column", gap: 1,
+        }}>
+          <div style={{ display: "flex", gap: 6, padding: "2px 8px 8px", borderBottom: "1px solid var(--border-2)", marginBottom: 4 }}>
+            <button className="btn" onClick={() => { onChange(null); setOpen(false); }}
+              style={{ fontSize: 11, padding: "3px 8px", flex: 1 }}>All</button>
+            <button className="btn" onClick={() => onChange([])}
+              style={{ fontSize: 11, padding: "3px 8px", flex: 1 }}>None</button>
+          </div>
+          {allTopics.map((t) => (
+            <label key={t.name} style={{
+              display: "flex", alignItems: "center", gap: 8, padding: "5px 10px",
+              cursor: "pointer", borderRadius: 6, fontSize: 12.5,
+              color: selected.has(t.name) ? "var(--text)" : "var(--text-faint)",
+              background: selected.has(t.name) ? "transparent" : "transparent",
+            }} onMouseEnter={(e) => e.currentTarget.style.background = "var(--panel-2)"}
+               onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}>
+              <input type="checkbox" checked={selected.has(t.name)} onChange={() => toggle(t.name)}
+                style={{ accentColor: "var(--accent)", width: 13, height: 13, flexShrink: 0 }} />
+              <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</span>
+              <span className="mono" style={{ fontSize: 11, color: "var(--text-faint)" }}>{t.count}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {}, allTagOptions = [], radarFilter = null, onSaveRadarFilter, onSaveTags, onOpenProblem, onGoAllSolved }) {
   const [range, setRange] = React.useState(RANGES[4]); // All
 
   const allProblems = withTagOverrides(problems, tagOverrides);
   const windowed = withinDays(allProblems, range.days);
   const hasData = windowed.length > 0;
   const { topics: radarTopicList, lo: radarLo, hi: radarHi } = radarTopics(windowed);
+  const filteredRadarTopics = radarFilter
+    ? radarTopicList.filter((t) => radarFilter.includes(t.name))
+    : radarTopicList;
   const diff = difficultyDistribution(windowed);
   const types = typeDistribution(7, windowed);
   const stats = topicStats(windowed);
@@ -375,9 +395,22 @@ function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {},
         <div className="panel animate-in" style={{ padding: 20 }}>
           <div className="card-head">
             <span className="card-title">Skill by topic</span>
-            <span className="label">avg difficulty</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span className="label">avg difficulty</span>
+              {hasData && (
+                <RadarFilterDropdown
+                  allTopics={radarTopicList}
+                  filter={radarFilter}
+                  onChange={onSaveRadarFilter}
+                />
+              )}
+            </div>
           </div>
-          {hasData ? <SkillRadar topics={radarTopicList} lo={radarLo} hi={radarHi} /> : <Empty msg="Nothing solved in this period." h={300} />}
+          {hasData
+            ? filteredRadarTopics.length >= 3
+              ? <SkillRadar topics={filteredRadarTopics} lo={radarLo} hi={radarHi} />
+              : <Empty msg="Select at least 3 topics to render the radar." h={300} />
+            : <Empty msg="Nothing solved in this period." h={300} />}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           <div className="panel animate-in" style={{ padding: 20 }}>
@@ -408,7 +441,6 @@ function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {},
       </div>
 
       <RecentList problems={recentList} allTagOptions={allTagOptions} onOpen={onOpenProblem} onViewAll={onGoAllSolved} onSaveTags={onSaveTags} />
-      <RecommendStub />
     </div>
   );
 }

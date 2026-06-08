@@ -1,7 +1,7 @@
 /* ============================================================
    Helpers: rank colors, derived stats, formatting
    ============================================================ */
-import { PROBLEMS, TAG_GROUPS } from "./data";
+import { TAG_GROUPS } from "./data";
 
   // Codeforces rank thresholds → css var color + label
   const RANKS = [
@@ -49,21 +49,21 @@ import { PROBLEMS, TAG_GROUPS } from "./data";
     return probs.filter((p) => dateMs(p.solvedAt) >= cutoff);
   }
 
-  function difficultyDistribution(probs = PROBLEMS) {
+  function difficultyDistribution(probs = []) {
     const ratings = probs.map((p) => p.rating).filter(Boolean);
     if (!ratings.length) return [];
     const maxR = Math.max(...ratings);
-    const topBucket = Math.ceil(maxR / 200) * 200;
+    // extend top bucket so maxR always falls inside a full 200-pt range
+    const topBucket = (Math.floor(maxR / 200) + 1) * 200;
     const buckets = [];
     for (let lo = 800; lo < topBucket; lo += 200) {
       const hi = lo + 199;
-      const isLast = lo + 200 >= topBucket;
       buckets.push({
-        label: isLast ? `${lo}+` : `${lo}–${hi}`,
+        label: `${lo}–${hi}`,
         lo,
-        hi: isLast ? 9999 : hi,
+        hi,
         color: diffColor(lo + 100),
-        count: probs.filter((p) => p.rating >= lo && p.rating <= (isLast ? 9999 : hi)).length,
+        count: probs.filter((p) => p.rating >= lo && p.rating <= hi).length,
       });
     }
     return buckets;
@@ -73,12 +73,12 @@ import { PROBLEMS, TAG_GROUPS } from "./data";
     return overrides[problem.id] || problem.tags;
   }
 
-  function withTagOverrides(probs = PROBLEMS, overrides = {}) {
+  function withTagOverrides(probs = [], overrides = {}) {
     return probs.map((p) => ({ ...p, tags: effectiveTags(p, overrides) }));
   }
 
   // per-topic aggregate: count + avg ("elo") + max rating
-  function topicStats(probs = PROBLEMS) {
+  function topicStats(probs = []) {
     const map = {};
     for (const p of probs) {
       for (const t of p.tags) {
@@ -94,9 +94,7 @@ import { PROBLEMS, TAG_GROUPS } from "./data";
     return Object.values(map).map((m) => ({ ...m, avg: Math.round(m.sum / m.count) }));
   }
 
-  // core topics for the recommend stub topic picker
-  const CORE = ["DP","Greedy","Math","Graphs","Data Structures","Binary Search","Constructive","Number Theory"];
-  function radarTopics(probs = PROBLEMS) {
+  function radarTopics(probs = []) {
     const stats = topicStats(probs);
     const lo = 800;
     const hi = probs.reduce((m, p) => (p.rating ? Math.max(m, p.rating) : m), lo + 1);
@@ -109,7 +107,7 @@ import { PROBLEMS, TAG_GROUPS } from "./data";
   }
 
   // weakest topics: lowest AVERAGE solved difficulty (penalize few solves slightly)
-  function weakest(n = 4, probs = PROBLEMS) {
+  function weakest(n = 4, probs = []) {
     const stats = topicStats(probs).filter((s) => s.count >= 1);
     const scored = stats.map((s) => ({ ...s, score: s.avg - Math.min(s.count, 5) * 12 }));
     scored.sort((a, b) => a.score - b.score);
@@ -117,7 +115,7 @@ import { PROBLEMS, TAG_GROUPS } from "./data";
   }
 
   // types of problems solved — top tags by count for the donut
-  function typeDistribution(n = 7, probs = PROBLEMS) {
+  function typeDistribution(n = 7, probs = []) {
     const stats = topicStats(probs).slice();
     stats.sort((a, b) => b.count - a.count);
     const top = stats.slice(0, n);
@@ -131,7 +129,7 @@ import { PROBLEMS, TAG_GROUPS } from "./data";
     return out;
   }
 
-  function totals(probs = PROBLEMS) {
+  function totals(probs = []) {
     const solved = probs.length;
     const tagSet = new Set();
     probs.forEach((p) => p.tags.forEach((t) => tagSet.add(t)));
@@ -143,7 +141,7 @@ import { PROBLEMS, TAG_GROUPS } from "./data";
   }
 
   // recent solves — use exact timestamp when available, fall back to date string
-  function recent(n = 5, probs = PROBLEMS) {
+  function recent(n = 5, probs = []) {
     return probs.slice().sort((a, b) => {
       const ta = a.solvedAtTs ?? dateMs(a.solvedAt);
       const tb = b.solvedAtTs ?? dateMs(b.solvedAt);
@@ -179,7 +177,6 @@ import { PROBLEMS, TAG_GROUPS } from "./data";
   }
 
 export {
-  CORE,
   DIFF_BUCKETS,
   cssVar,
   diffColor,

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getSupabase } from "../../../lib/supabase";
 
 const CF_HANDLE = process.env.CF_HANDLE ?? "jjelloo";
 const FETCH_COUNT = 50;
@@ -31,20 +32,19 @@ export async function POST() {
     return NextResponse.json({ error: e.message }, { status: 502 });
   }
 
-  // --- user info ---
+  // --- user ---
   const u = userResult[0];
   const user = {
     handle: u.handle,
     rating: u.rating ?? 0,
-    maxRating: u.maxRating ?? 0,
+    max_rating: u.maxRating ?? 0,
     rank: capitalize(u.rank ?? ""),
-    maxRank: capitalize(u.maxRank ?? ""),
+    max_rank: capitalize(u.maxRank ?? ""),
     contribution: u.contribution ?? 0,
     friends: u.friendOfCount ?? 0,
     registered: isoDate(u.registrationTimeSeconds),
   };
 
-  // --- rating history ---
   const ratingHistory = ratingResult.map((entry) => ({
     c: entry.contestName,
     date: isoDate(entry.ratingUpdateTimeSeconds),
@@ -52,7 +52,7 @@ export async function POST() {
     delta: entry.newRating - entry.oldRating,
   }));
 
-  // --- problems: group by problem key, find first AC, count attempts ---
+  // --- problems ---
   const byProblem = new Map();
   for (const sub of statusResult) {
     const key = `${sub.contestId}${sub.problem.index}`;
@@ -70,16 +70,59 @@ export async function POST() {
     const { problem } = acSub;
     problems.push({
       id: key,
-      contestId: acSub.contestId,
-      index: problem.index,
+      handle: CF_HANDLE,
+      contest_id: acSub.contestId,
+      problem_index: problem.index,
       name: problem.name,
       rating: problem.rating ?? null,
       tags: problem.tags ?? [],
-      solvedAt: isoDate(acSub.creationTimeSeconds),
-      solvedAtTs: acSub.creationTimeSeconds * 1000,
+      solved_at: isoDate(acSub.creationTimeSeconds),
+      solved_at_ts: acSub.creationTimeSeconds * 1000,
       attempts: acIdx + 1,
     });
   }
 
-  return NextResponse.json({ user, ratingHistory, problems });
+  // --- upsert to Supabase (ignoredColumns: note, tag_overrides — preserve user edits) ---
+  const sb = getSupabase();
+  const [profileErr, problemsErr] = await Promise.all([
+    sb
+      .from("user_profiles")
+      .upsert({ ...user, rating_history: ratingHistory })
+      .then(({ error }) => error),
+    problems.length
+      ? sb
+          .from("problems")
+          .upsert(problems, { onConflict: "id", ignoreDuplicates: false })
+          .then(({ error }) => error)
+      : Promise.resolve(null),
+  ]);
+
+  if (profileErr) console.error("upsert user_profiles:", profileErr.message);
+  if (problemsErr) console.error("upsert problems:", problemsErr.message);
+
+  // Return in the shape the frontend expects
+  return NextResponse.json({
+    user: {
+      handle: user.handle,
+      rating: user.rating,
+      maxRating: user.max_rating,
+      rank: user.rank,
+      maxRank: user.max_rank,
+      contribution: user.contribution,
+      friends: user.friends,
+      registered: user.registered,
+    },
+    ratingHistory,
+    problems: problems.map((p) => ({
+      id: p.id,
+      contestId: p.contest_id,
+      index: p.problem_index,
+      name: p.name,
+      rating: p.rating,
+      tags: p.tags,
+      solvedAt: p.solved_at,
+      solvedAtTs: p.solved_at_ts,
+      attempts: p.attempts,
+    })),
+  });
 }
