@@ -36,8 +36,9 @@ export function RatingChart({ history }) {
   const linePath = history.map((h, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(h.rating).toFixed(1)}`).join(" ");
   const areaPath = `${linePath} L${x(history.length - 1).toFixed(1)},${y(lo)} L${x(0).toFixed(1)},${y(lo)} Z`;
 
-  const gridY = [];
-  for (let r = lo; r <= hi; r += 100) gridY.push(r);
+  // y-axis labels: only the rank thresholds (band boundaries) within view,
+  // dropping any that would collide with the current-rating marker
+  const rankLines = bands.map((b) => b.lo).filter((r) => r > lo && r < hi && Math.abs(r - cur) > 40);
 
   // pick up to 6 evenly-spaced x-axis date labels, always including first + last
   const maxLabels = 6;
@@ -64,10 +65,13 @@ export function RatingChart({ history }) {
           return <rect key={i} x={padL} y={yTop} width={W - padL - padR} height={Math.max(0, yBot - yTop)}
             fill={b.color} opacity="0.16" />;
         })}
-        {gridY.map((r) => (
+        {rankLines.map((r) => (
           <text key={r} x={W - padR} y={y(r) - 4} textAnchor="end" fontSize="10" fontFamily="var(--font-mono)"
             fill="var(--text-faint)">{r}</text>
         ))}
+        {/* current rating — highlighted */}
+        <text x={W - padR} y={y(cur) - 4} textAnchor="end" fontSize="11" fontWeight="600"
+          fontFamily="var(--font-mono)" fill={rankOf(cur).color}>{cur}</text>
         {/* x-axis date labels — anchor the edges inward so they don't clip */}
         {xAxisIdx.map((i) => {
           const anchor = i === 0 ? "start" : i === history.length - 1 ? "end" : "middle";
