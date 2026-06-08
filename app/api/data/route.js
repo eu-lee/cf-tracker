@@ -1,24 +1,29 @@
 import { NextResponse } from "next/server";
-import { getSupabase } from "../../../lib/supabase";
-
-const CF_HANDLE = process.env.CF_HANDLE ?? "jjelloo";
+import { createClient } from "../../../lib/supabase/server";
 
 export async function GET() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
   const [{ data: profileData, error: profileErr }, { data: problemsData, error: problemsErr }] =
     await Promise.all([
-      getSupabase().from("user_profiles").select("*").eq("handle", CF_HANDLE).single(),
-      getSupabase().from("problems").select("*").eq("handle", CF_HANDLE).order("solved_at_ts", { ascending: false }),
+      supabase.from("profiles").select("*").eq("id", user.id).single(),
+      supabase.from("problems").select("*").eq("user_id", user.id).order("solved_at_ts", { ascending: false }),
     ]);
 
   if (profileErr && profileErr.code !== "PGRST116") {
-    // PGRST116 = no rows found (not yet synced)
-    console.error("fetch user_profiles:", profileErr.message);
+    // PGRST116 = no rows found
+    console.error("fetch profile:", profileErr.message);
   }
   if (problemsErr) console.error("fetch problems:", problemsErr.message);
 
-  const user = profileData
+  const handle = profileData?.handle ?? null;
+
+  // Only expose CF stats once a handle is set and synced.
+  const cfUser = handle
     ? {
-        handle: profileData.handle,
+        handle,
         rating: profileData.rating,
         maxRating: profileData.max_rating,
         rank: profileData.rank,
@@ -46,5 +51,5 @@ export async function GET() {
     tagOverride: p.tag_overrides ?? null,
   }));
 
-  return NextResponse.json({ user, ratingHistory, problems, radarFilter });
+  return NextResponse.json({ handle, user: cfUser, ratingHistory, problems, radarFilter });
 }

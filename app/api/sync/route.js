@@ -1,41 +1,37 @@
 import { NextResponse } from "next/server";
-import { getSupabase } from "../../../lib/supabase";
+import { createClient } from "../../../lib/supabase/server";
+import { capitalize, isoDate, cfFetch } from "../../../lib/cf";
 
-const CF_HANDLE = process.env.CF_HANDLE ?? "jjelloo";
 const FETCH_COUNT = 50;
 
-function capitalize(s) {
-  if (!s) return s;
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-function isoDate(seconds) {
-  return new Date(seconds * 1000).toISOString().split("T")[0];
-}
-
-async function cfFetch(url) {
-  const res = await fetch(url, { cache: "no-store" });
-  const json = await res.json();
-  if (json.status !== "OK") throw new Error(json.comment ?? "CF API error");
-  return json.result;
-}
-
 export async function POST() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  // Handle comes from the caller's profile, not an env var.
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("handle")
+    .eq("id", user.id)
+    .single();
+  const handle = profile?.handle;
+  if (!handle) return NextResponse.json({ error: "no handle set" }, { status: 400 });
+
   let userResult, ratingResult, statusResult;
   try {
     [userResult, ratingResult, statusResult] = await Promise.all([
-      cfFetch(`https://codeforces.com/api/user.info?handles=${CF_HANDLE}`),
-      cfFetch(`https://codeforces.com/api/user.rating?handle=${CF_HANDLE}`),
-      cfFetch(`https://codeforces.com/api/user.status?handle=${CF_HANDLE}&from=1&count=${FETCH_COUNT}`),
+      cfFetch(`https://codeforces.com/api/user.info?handles=${handle}`),
+      cfFetch(`https://codeforces.com/api/user.rating?handle=${handle}`),
+      cfFetch(`https://codeforces.com/api/user.status?handle=${handle}&from=1&count=${FETCH_COUNT}`),
     ]);
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 502 });
   }
 
-  // --- user ---
+  // --- user stats ---
   const u = userResult[0];
-  const user = {
-    handle: u.handle,
+  const stats = {
     rating: u.rating ?? 0,
     max_rating: u.maxRating ?? 0,
     rank: capitalize(u.rank ?? ""),
@@ -69,8 +65,8 @@ export async function POST() {
     const acSub = sorted[acIdx];
     const { problem } = acSub;
     problems.push({
+      user_id: user.id,
       id: key,
-      handle: CF_HANDLE,
       contest_id: acSub.contestId,
       problem_index: problem.index,
       name: problem.name,
@@ -82,35 +78,34 @@ export async function POST() {
     });
   }
 
-  // --- upsert to Supabase (ignoredColumns: note, tag_overrides — preserve user edits) ---
-  const sb = getSupabase();
+  // --- persist (RLS scopes both writes to this user) ---
   const [profileErr, problemsErr] = await Promise.all([
-    sb
-      .from("user_profiles")
-      .upsert({ ...user, rating_history: ratingHistory })
+    supabase
+      .from("profiles")
+      .update({ ...stats, handle, rating_history: ratingHistory })
+      .eq("id", user.id)
       .then(({ error }) => error),
     problems.length
-      ? sb
+      ? supabase
           .from("problems")
-          .upsert(problems, { onConflict: "id", ignoreDuplicates: false })
+          .upsert(problems, { onConflict: "user_id,id", ignoreDuplicates: false })
           .then(({ error }) => error)
       : Promise.resolve(null),
   ]);
 
-  if (profileErr) console.error("upsert user_profiles:", profileErr.message);
+  if (profileErr) console.error("update profile:", profileErr.message);
   if (problemsErr) console.error("upsert problems:", problemsErr.message);
 
-  // Return in the shape the frontend expects
   return NextResponse.json({
     user: {
-      handle: user.handle,
-      rating: user.rating,
-      maxRating: user.max_rating,
-      rank: user.rank,
-      maxRank: user.max_rank,
-      contribution: user.contribution,
-      friends: user.friends,
-      registered: user.registered,
+      handle,
+      rating: stats.rating,
+      maxRating: stats.max_rating,
+      rank: stats.rank,
+      maxRank: stats.max_rank,
+      contribution: stats.contribution,
+      friends: stats.friends,
+      registered: stats.registered,
     },
     ratingHistory,
     problems: problems.map((p) => ({

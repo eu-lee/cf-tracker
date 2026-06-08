@@ -2,7 +2,7 @@ import Script from "next/script";
 import "./globals.css";
 
 export const metadata = {
-  title: "Codeforces Tracker - jjelloo",
+  title: "Codeforces Tracker",
   description: "A Codeforces practice dashboard and solved-problem tracker.",
 };
 

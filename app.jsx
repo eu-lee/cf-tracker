@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { TAG_GROUPS } from "./data";
 import { AllSolved, ProblemWindow } from "./allsolved";
 import { Dashboard } from "./dashboard";
+import { Login, HandleSetup } from "./auth";
+import { createClient } from "./lib/supabase/client";
 
 const THEME_KEY = "cf_tracker_theme";
 const TAB_KEY = "cf_tracker_tab";
@@ -47,6 +49,8 @@ export default function App() {
   const [hydrated, setHydrated] = useState(false);
   const [theme, setTheme] = useState("dark");
   const [tab, setTab] = useState("dashboard");
+  const [session, setSession] = useState(undefined); // undefined = loading, null = signed out
+  const [handle, setHandle] = useState(null); // CF handle from profile; null = not set
   const [user, setUser] = useState(null);
   const [ratingHistory, setRatingHistory] = useState([]);
   const [problems, setProblems] = useState([]);
@@ -77,13 +81,33 @@ export default function App() {
     if (hydrated) window.localStorage?.setItem(TAB_KEY, tab);
   }, [hydrated, tab]);
 
-  // Load all data from Supabase on mount
+  // Track the Supabase auth session
   useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s ?? null);
+      if (!s) {
+        // Signed out: clear user data
+        setHandle(null);
+        setUser(null);
+        setProblems([]);
+        setRatingHistory([]);
+        setHydrated(false);
+      }
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  // Load all data from Supabase once signed in
+  useEffect(() => {
+    if (!session) return;
     let cancelled = false;
     fetch("/api/data")
       .then((r) => r.json())
-      .then(({ user, ratingHistory, problems, radarFilter }) => {
+      .then(({ handle, user, ratingHistory, problems, radarFilter }) => {
         if (cancelled) return;
+        setHandle(handle ?? null);
         if (user) setUser(user);
         if (ratingHistory) setRatingHistory(ratingHistory);
         if (radarFilter) setRadarFilter(radarFilter);
@@ -104,7 +128,7 @@ export default function App() {
         if (!cancelled) setHydrated(true); // show empty state on error
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [session]);
 
   async function handleSync() {
     if (syncing) return;
@@ -130,6 +154,16 @@ export default function App() {
     } finally {
       setSyncing(false);
     }
+  }
+
+  async function handleSignOut() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+  }
+
+  function handleHandleSet(h) {
+    setHandle(h);
+    handleSync(); // pull data for the freshly-set handle
   }
 
   function saveNote(id, note) {
@@ -182,6 +216,17 @@ export default function App() {
 
   const hasData = hydrated && user !== null;
 
+  // --- Auth gates ---
+  if (session === null) {
+    return <div className="app-shell"><Login /></div>;
+  }
+  if (session === undefined || !hydrated) {
+    return <div className="app-shell" />; // brief loading flash
+  }
+  if (!handle) {
+    return <div className="app-shell"><HandleSetup onComplete={handleHandleSet} /></div>;
+  }
+
   return (
     <div className="app-shell">
       <header style={{
@@ -208,8 +253,8 @@ export default function App() {
 
           <div style={{ flex: 1 }} />
 
-          {user && (
-            <span className="mono" style={{ fontSize: 12.5, color: "var(--text-faint)" }}>@{user.handle}</span>
+          {handle && (
+            <span className="mono" style={{ fontSize: 12.5, color: "var(--text-faint)" }}>@{handle}</span>
           )}
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {syncError && !syncing && (
@@ -229,6 +274,11 @@ export default function App() {
           <button className="btn" onClick={() => setTheme((t) => t === "dark" ? "light" : "dark")}
             title="Toggle theme" style={{ padding: "7px 10px", width: 38, justifyContent: "center" }}>
             {theme === "dark" ? "☾" : "☀"}
+          </button>
+          <button className="btn" onClick={handleSignOut}
+            title={session?.user?.email ? `Sign out (${session.user.email})` : "Sign out"}
+            style={{ padding: "7px 12px", fontSize: 12.5 }}>
+            sign out
           </button>
         </div>
       </header>
