@@ -18,8 +18,10 @@ export function RatingChart({ history }) {
   const W = 760, H = 300, padL = 8, padR = 8, padT = 18, padB = 44;
   const ratings = history.map((h) => h.rating);
   const minR = Math.min(...ratings), maxR = Math.max(...ratings);
+  const cur = ratings[ratings.length - 1];
   const lo = Math.floor((minR - 70) / 100) * 100;
-  const hi = Math.ceil((maxR + 70) / 100) * 100;
+  // top of the chart = current rating + 500 of headroom (guard against a past peak)
+  const hi = Math.ceil(Math.max(cur + 500, maxR) / 100) * 100;
   const x = (i) => history.length <= 1 ? W / 2 : padL + (i / (history.length - 1)) * (W - padL - padR);
   const y = (r) => padT + (1 - (r - lo) / (hi - lo)) * (H - padT - padB);
 
@@ -63,11 +65,8 @@ export function RatingChart({ history }) {
             fill={b.color} opacity="0.16" />;
         })}
         {gridY.map((r) => (
-          <g key={r}>
-            <line x1={padL} y1={y(r)} x2={W - padR} y2={y(r)} stroke="var(--border-2)" strokeWidth="1" />
-            <text x={W - padR} y={y(r) - 4} textAnchor="end" fontSize="10" fontFamily="var(--font-mono)"
-              fill="var(--text-faint)">{r}</text>
-          </g>
+          <text key={r} x={W - padR} y={y(r) - 4} textAnchor="end" fontSize="10" fontFamily="var(--font-mono)"
+            fill="var(--text-faint)">{r}</text>
         ))}
         {/* x-axis date labels — anchor the edges inward so they don't clip */}
         {xAxisIdx.map((i) => {
