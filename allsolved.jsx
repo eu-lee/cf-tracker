@@ -42,10 +42,11 @@ function truncate(s, n) {
 
 function TagEditor({ problemId, tags, allTagOptions, onSaveTags }) {
   const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
   const rootRef = React.useRef(null);
 
   React.useEffect(() => {
-    if (!open) return;
+    if (!open) { setQuery(""); return; }
     function onPointerDown(e) {
       if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
     }
@@ -69,7 +70,22 @@ function TagEditor({ problemId, tags, allTagOptions, onSaveTags }) {
     setOpen(false);
   }
 
-  const availableTags = (allTagOptions ?? []).filter((t) => !tags.includes(t));
+  const available = (allTagOptions ?? []).filter((t) => !tags.includes(t));
+  const q = query.trim().toLowerCase();
+  const availableTags = q
+    ? available.filter((t) => ((TAG_GROUPS[t] || t).toLowerCase().includes(q) || t.toLowerCase().includes(q)))
+    : available;
+  // allow creating a free-form tag when the query matches nothing existing
+  const customTag = query.trim();
+  const showCustom = customTag && !tags.includes(customTag)
+    && !available.some((t) => (TAG_GROUPS[t] || t).toLowerCase() === q || t.toLowerCase() === q);
+
+  function onSearchKeyDown(e) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (availableTags.length > 0) addTag(availableTags[0]);
+    else if (showCustom) addTag(customTag);
+  }
 
   return (
     <div ref={rootRef} style={{ position: "relative" }} onClick={(e) => e.stopPropagation()}>
@@ -104,12 +120,34 @@ function TagEditor({ problemId, tags, allTagOptions, onSaveTags }) {
       </div>
       {open && (
         <div className="recent-tag-menu" role="listbox" aria-label="Codeforces tags" style={{ right: 0, left: "auto", top: "calc(100% + 6px)" }}>
-          {availableTags.length > 0 ? availableTags.map((t) => (
+          <div style={{ position: "sticky", top: 0, zIndex: 1, background: "var(--panel)", paddingBottom: 4, marginBottom: 2 }}>
+            <input
+              autoFocus
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={onSearchKeyDown}
+              placeholder="Search tags…"
+              aria-label="Search tags"
+              style={{
+                width: "100%", boxSizing: "border-box", padding: "6px 9px", fontSize: 12.5,
+                borderRadius: 6, border: "1px solid var(--border)",
+                background: "var(--bg)", color: "var(--text)", fontFamily: "inherit",
+              }}
+            />
+          </div>
+          {availableTags.map((t) => (
             <button key={t} type="button" className="recent-tag-menu-item" onClick={() => addTag(t)}>
               {TAG_GROUPS[t] || t}
             </button>
-          )) : (
-            <div className="recent-tag-menu-empty">No more tags</div>
+          ))}
+          {showCustom && (
+            <button type="button" className="recent-tag-menu-item" onClick={() => addTag(customTag)}>
+              + Add “{customTag}”
+            </button>
+          )}
+          {availableTags.length === 0 && !showCustom && (
+            <div className="recent-tag-menu-empty">{q ? "No matching tags" : "No more tags"}</div>
           )}
         </div>
       )}
