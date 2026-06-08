@@ -77,21 +77,39 @@ import { TAG_GROUPS } from "./data";
     return probs.map((p) => ({ ...p, tags: effectiveTags(p, overrides) }));
   }
 
-  // per-topic aggregate: count + avg ("elo") + max rating
+  // Geometric-decay weighted estimate of topic ability. Sort solves hardest-first
+  // and weight each by r^i, so the hardest few dominate (no single max pegs it)
+  // while volume of hard solves still counts — Codeforces-style aggregation.
+  // r ≈ 0.85 → effective window of the top ~7 solves.
+  const SCORE_DECAY = 0.85;
+  function weightedScore(ratings, r = SCORE_DECAY) {
+    if (!ratings.length) return 0;
+    const sorted = ratings.slice().sort((a, b) => b - a);
+    let num = 0, den = 0, w = 1;
+    for (const d of sorted) { num += d * w; den += w; w *= r; }
+    return Math.round(num / den);
+  }
+
+  // per-topic aggregate: count + avg + weighted score ("elo") + max rating
   function topicStats(probs = []) {
     const map = {};
     for (const p of probs) {
       for (const t of p.tags) {
         const name = TAG_GROUPS[t] || t;
-        if (!map[name]) map[name] = { name, raw: t, count: 0, max: 0, sum: 0, latest: "" };
+        if (!map[name]) map[name] = { name, raw: t, count: 0, max: 0, sum: 0, latest: "", ratings: [] };
         const m = map[name];
         m.count++;
         m.max = Math.max(m.max, p.rating);
         m.sum += p.rating;
+        if (p.rating) m.ratings.push(p.rating);
         if (p.solvedAt > m.latest) m.latest = p.solvedAt;
       }
     }
-    return Object.values(map).map((m) => ({ ...m, avg: Math.round(m.sum / m.count) }));
+    return Object.values(map).map((m) => ({
+      ...m,
+      avg: Math.round(m.sum / m.count),
+      score: weightedScore(m.ratings),
+    }));
   }
 
   function radarTopics(probs = []) {
@@ -102,17 +120,17 @@ import { TAG_GROUPS } from "./data";
     const hi = maxRating + 250;
     const range = hi - lo;
     const topics = stats.map((s) => {
-      const skill = s.count ? Math.max(0.05, Math.min(1, (s.avg - lo) / range)) : 0;
-      return { name: s.name, count: s.count, max: s.max || 0, avg: s.avg || 0, skill };
+      const skill = s.count ? Math.max(0.05, Math.min(1, (s.score - lo) / range)) : 0;
+      return { name: s.name, count: s.count, max: s.max || 0, avg: s.avg || 0, score: s.score || 0, skill };
     });
     return { topics, lo, hi };
   }
 
-  // weakest topics: lowest AVERAGE solved difficulty (penalize few solves slightly)
+  // weakest topics: lowest weighted topic score (penalize few solves slightly)
   function weakest(n = 4, probs = []) {
     const stats = topicStats(probs).filter((s) => s.count >= 1);
-    const scored = stats.map((s) => ({ ...s, score: s.avg - Math.min(s.count, 5) * 12 }));
-    scored.sort((a, b) => a.score - b.score);
+    const scored = stats.map((s) => ({ ...s, rank: s.score - Math.min(s.count, 5) * 12 }));
+    scored.sort((a, b) => a.rank - b.rank);
     return scored.slice(0, n);
   }
 

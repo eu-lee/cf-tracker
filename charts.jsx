@@ -216,7 +216,7 @@ export function SkillRadar({ topics, lo = 800, hi = 2000 }) {
               fontWeight={hover === i ? 700 : 500}
               fill={hover === i ? "var(--text)" : "var(--text-dim)"}>{t.name}</text>
             <text x={lx} y={ly + 15} textAnchor={anchor} dominantBaseline="middle" fontSize="11"
-              fontFamily="var(--font-mono)" fill="var(--text-faint)">avg {t.avg || "—"}</text>
+              fontFamily="var(--font-mono)" fill="var(--text-faint)">{t.score || "—"}</text>
           </g>
         );
       })}

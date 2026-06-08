@@ -50,18 +50,18 @@ function ProfileHero({ user, problems }) {
 }
 
 function EloByTopic({ stats }) {
-  const sorted = stats.slice().sort((a, b) => b.avg - a.avg).slice(0, 9);
+  const sorted = stats.slice().sort((a, b) => b.score - a.score).slice(0, 9);
   const lo = 1100, hi = 1950;
   return (
     <div className="panel animate-in" style={{ padding: 20 }}>
       <div className="card-head">
         <span className="card-title">Elo by topic</span>
-        <span className="label">avg solved difficulty</span>
+        <span className="label">estimated level</span>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
         {sorted.map((s) => {
-          const pct = Math.max(6, Math.min(100, ((s.avg - lo) / (hi - lo)) * 100));
-          const c = diffColor(s.avg);
+          const pct = Math.max(6, Math.min(100, ((s.score - lo) / (hi - lo)) * 100));
+          const c = diffColor(s.score);
           return (
             <div key={s.name} style={{ display: "grid", gridTemplateColumns: "118px 1fr 96px", alignItems: "center", gap: 12 }}>
               <span style={{ fontSize: 12.5, color: "var(--text-dim)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</span>
@@ -69,7 +69,7 @@ function EloByTopic({ stats }) {
                 <div style={{ width: pct + "%", height: "100%", background: c, borderRadius: 99,
                   transition: "width .6s cubic-bezier(.16,1,.3,1)" }} />
               </div>
-              <span className="mono" style={{ fontSize: 12.5, fontWeight: 600, color: c, textAlign: "right", whiteSpace: "nowrap" }}>{s.avg} <span style={{ color: "var(--text-faint)", fontWeight: 500 }}>({s.count})</span></span>
+              <span className="mono" style={{ fontSize: 12.5, fontWeight: 600, color: c, textAlign: "right", whiteSpace: "nowrap" }}>{s.score} <span style={{ color: "var(--text-faint)", fontWeight: 500 }}>({s.count})</span></span>
             </div>
           );
         })}
@@ -85,7 +85,7 @@ function WeakPoints({ topics }) {
         <span className="card-title">Weak points</span>
       </div>
       <p style={{ margin: "0 0 16px", fontSize: 12.5, color: "var(--text-faint)", lineHeight: 1.5 }}>
-        Lowest average solved difficulty.
+        Lowest estimated level (weighted toward your hardest solves).
       </p>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {topics.map((t, i) => (
@@ -95,7 +95,7 @@ function WeakPoints({ topics }) {
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{t.name}</div>
               <div style={{ fontSize: 11.5, color: "var(--text-faint)" }}>
-                {t.count} solved · avg <span className="mono" style={{ color: diffColor(t.avg) }}>{t.avg}</span>
+                {t.count} solved · level <span className="mono" style={{ color: diffColor(t.score) }}>{t.score}</span>
               </div>
             </div>
             <span className="chip" style={{ color: "var(--accent-text)", borderColor: "var(--accent)", background: "var(--accent-dim)" }}>
@@ -379,7 +379,7 @@ function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {},
     const names = [...new Set(Object.values(TAG_GROUPS))];
     for (const t of radarTopicList) if (!names.includes(t.name)) names.push(t.name);
     return names
-      .map((name) => byName.get(name) || { name, count: 0, max: 0, avg: 0, skill: 0 })
+      .map((name) => byName.get(name) || { name, count: 0, max: 0, avg: 0, score: 0, skill: 0 })
       .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   })();
   // radarFilter: null = solved topics, "all" = every topic, array = custom subset
@@ -437,7 +437,7 @@ function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {},
           <div className="card-head">
             <span className="card-title">Skill by topic</span>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span className="label">avg difficulty</span>
+              <span className="label">est. level</span>
               {hasData && (
                 <RadarFilterDropdown
                   allTopics={radarUniverse}
