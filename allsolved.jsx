@@ -327,8 +327,11 @@ function AllSolved({ problems = [], notes, tagOverrides = {}, allTagOptions = []
                         <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{p.name}</span>
                       </div>
                       {preview && (
-                        <Latex className="note-preview" text={truncate(preview, 70)}
-                          style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 300 }} />
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 5, marginTop: 3, maxWidth: 300 }}>
+                          <span style={{ fontSize: 11, color: "var(--text-faint)", flexShrink: 0 }}>notes:</span>
+                          <Latex className="note-preview" text={truncate(preview, 70)}
+                            style={{ fontSize: 11.5, color: "var(--text-faint)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }} />
+                        </div>
                       )}
                     </td>
                     <td style={{ padding: "13px 16px" }}><DiffBadge rating={p.rating} size="sm" /></td>

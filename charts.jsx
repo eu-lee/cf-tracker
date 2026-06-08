@@ -52,7 +52,7 @@ export function RatingChart({ history }) {
         onMouseLeave={() => setHover(null)}>
         <defs>
           <linearGradient id="ratingFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.20" />
+            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.12" />
             <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
           </linearGradient>
         </defs>
@@ -60,7 +60,7 @@ export function RatingChart({ history }) {
           const yTop = y(Math.min(b.hi, hi));
           const yBot = y(Math.max(b.lo, lo));
           return <rect key={i} x={padL} y={yTop} width={W - padL - padR} height={Math.max(0, yBot - yTop)}
-            fill={b.color} opacity="0.05" />;
+            fill={b.color} opacity="0.16" />;
         })}
         {gridY.map((r) => (
           <g key={r}>
@@ -69,15 +69,18 @@ export function RatingChart({ history }) {
               fill="var(--text-faint)">{r}</text>
           </g>
         ))}
-        {/* x-axis date labels */}
-        {xAxisIdx.map((i) => (
-          <g key={i}>
-            <line x1={x(i)} y1={H - padB + 4} x2={x(i)} y2={H - padB + 10}
-              stroke="var(--border)" strokeWidth="1" />
-            <text x={x(i)} y={H - padB + 22} textAnchor="middle" fontSize="10"
-              fontFamily="var(--font-mono)" fill="var(--text-faint)">{shortDate(history[i].date)}</text>
-          </g>
-        ))}
+        {/* x-axis date labels — anchor the edges inward so they don't clip */}
+        {xAxisIdx.map((i) => {
+          const anchor = i === 0 ? "start" : i === history.length - 1 ? "end" : "middle";
+          return (
+            <g key={i}>
+              <line x1={x(i)} y1={H - padB + 4} x2={x(i)} y2={H - padB + 10}
+                stroke="var(--border)" strokeWidth="1" />
+              <text x={x(i)} y={H - padB + 22} textAnchor={anchor} fontSize="10"
+                fontFamily="var(--font-mono)" fill="var(--text-faint)">{shortDate(history[i].date)}</text>
+            </g>
+          );
+        })}
         <path d={areaPath} fill="url(#ratingFill)" />
         <path d={linePath} fill="none" stroke="var(--accent)" strokeWidth="2.2"
           strokeLinejoin="round" strokeLinecap="round" />

@@ -212,9 +212,12 @@ function RecentList({ problems, allTagOptions, onOpen, onViewAll, onSaveTags }) 
                   <span className="mono" style={{ color: "var(--text-faint)", fontSize: 12, marginRight: 7 }}>{p.contestId}{p.index}</span>
                   {p.name}
               </div>
-              {p.note && (
-                <Latex className="note-preview" text={truncate(p.note, 90)}
-                  style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }} />
+              {notePlainText(p.note) && (
+                <div style={{ display: "flex", alignItems: "baseline", gap: 5, marginTop: 3, maxWidth: "100%" }}>
+                  <span style={{ fontSize: 11, color: "var(--text-faint)", flexShrink: 0 }}>notes:</span>
+                  <Latex className="note-preview" text={truncate(notePlainText(p.note), 90)}
+                    style={{ fontSize: 12, color: "var(--text-faint)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }} />
+                </div>
               )}
             </div>
             <RecentTags problem={p} allTagOptions={allTagOptions} onSaveTags={onSaveTags} />
@@ -223,6 +226,13 @@ function RecentList({ problems, allTagOptions, onOpen, onViewAll, onSaveTags }) 
       </div>
     </div>
   );
+}
+
+function notePlainText(note) {
+  if (!note) return "";
+  if (typeof note === "string") return note;
+  if (note.type === "tiptap") return note.text || "";
+  return "";
 }
 
 function truncate(s, n) {
@@ -289,20 +299,34 @@ function RadarFilterDropdown({ allTopics, filter, onChange }) {
     };
   }, [open]);
 
-  const isAll = filter === null || filter.length === allTopics.length;
-  const selected = new Set(filter ?? allTopics.map((t) => t.name));
+  // mode: "solved" (null) · "all" ("all") · "custom" (array of names)
+  const mode = filter == null ? "solved" : filter === "all" ? "all" : "custom";
+  const selected =
+    mode === "solved" ? new Set(allTopics.filter((t) => t.count > 0).map((t) => t.name))
+    : mode === "all" ? new Set(allTopics.map((t) => t.name))
+    : new Set(filter);
+
+  const label =
+    mode === "solved" ? "Solved topics"
+    : mode === "all" ? "All topics"
+    : `Custom · ${selected.size}`;
 
   function toggle(name) {
     const next = new Set(selected);
     next.has(name) ? next.delete(name) : next.add(name);
-    onChange(next.size === allTopics.length ? null : [...next]);
+    onChange(next.size === allTopics.length ? "all" : [...next]);
   }
+
+  const presets = [
+    { key: "solved", label: "Solved topics", value: null },
+    { key: "all", label: "All topics", value: "all" },
+  ];
 
   return (
     <div ref={rootRef} style={{ position: "relative" }}>
       <button className="btn" onClick={() => setOpen((v) => !v)}
         style={{ padding: "5px 10px", fontSize: 12 }}>
-        {isAll ? "Solved topics" : `${selected.size} / ${allTopics.length}`} ▾
+        {label} ▾
       </button>
       {open && (
         <div style={{
@@ -312,10 +336,14 @@ function RadarFilterDropdown({ allTopics, filter, onChange }) {
           overflowY: "auto", display: "flex", flexDirection: "column", gap: 1,
         }}>
           <div style={{ display: "flex", gap: 6, padding: "2px 8px 8px", borderBottom: "1px solid var(--border-2)", marginBottom: 4 }}>
-            <button className="btn" onClick={() => { onChange(null); setOpen(false); }}
-              style={{ fontSize: 11, padding: "3px 8px", flex: 1 }}>All</button>
-            <button className="btn" onClick={() => onChange([])}
-              style={{ fontSize: 11, padding: "3px 8px", flex: 1 }}>None</button>
+            {presets.map((p) => (
+              <button key={p.key} className="btn" onClick={() => onChange(p.value)}
+                style={{
+                  fontSize: 11, padding: "3px 8px", flex: 1,
+                  borderColor: mode === p.key ? "var(--accent)" : undefined,
+                  color: mode === p.key ? "var(--accent)" : undefined,
+                }}>{p.label}</button>
+            ))}
           </div>
           {allTopics.map((t) => (
             <label key={t.name} style={{
@@ -344,9 +372,22 @@ function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {},
   const windowed = withinDays(allProblems, range.days);
   const hasData = windowed.length > 0;
   const { topics: radarTopicList, lo: radarLo, hi: radarHi } = radarTopics(windowed);
-  const filteredRadarTopics = radarFilter
-    ? radarTopicList.filter((t) => radarFilter.includes(t.name))
-    : radarTopicList;
+  // Full topic universe = every canonical tag group, with solved stats merged in
+  // (unsolved topics get count/skill 0 so they can still render on the radar).
+  const radarUniverse = (() => {
+    const byName = new Map(radarTopicList.map((t) => [t.name, t]));
+    const names = [...new Set(Object.values(TAG_GROUPS))];
+    for (const t of radarTopicList) if (!names.includes(t.name)) names.push(t.name);
+    return names
+      .map((name) => byName.get(name) || { name, count: 0, max: 0, avg: 0, skill: 0 })
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  })();
+  // radarFilter: null = solved topics, "all" = every topic, array = custom subset
+  const radarMode = radarFilter == null ? "solved" : radarFilter === "all" ? "all" : "custom";
+  const filteredRadarTopics =
+    radarMode === "solved" ? radarTopicList
+    : radarMode === "all" ? radarUniverse
+    : radarUniverse.filter((t) => radarFilter.includes(t.name));
   const diff = difficultyDistribution(windowed);
   const types = typeDistribution(7, windowed);
   const stats = topicStats(windowed);
@@ -399,7 +440,7 @@ function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {},
               <span className="label">avg difficulty</span>
               {hasData && (
                 <RadarFilterDropdown
-                  allTopics={radarTopicList}
+                  allTopics={radarUniverse}
                   filter={radarFilter}
                   onChange={onSaveRadarFilter}
                 />

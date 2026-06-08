@@ -21,7 +21,7 @@ create table profiles (
   friends        integer,
   registered     text,
   rating_history jsonb default '[]',
-  radar_filter   text
+  radar_filter   jsonb        -- null = solved topics, "all" = all, [..] = custom
 );
 
 create table problems (
