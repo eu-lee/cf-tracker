@@ -164,7 +164,10 @@ export function SkillRadar({ topics, lo = 800, hi = 2000 }) {
   const pt = (i, r) => [cx + Math.cos(angle(i)) * R * r, cy + Math.sin(angle(i)) * R * r];
   const rings = [0.25, 0.5, 0.75, 1];
 
-  const poly = topics.map((t, i) => pt(i, Math.max(0.05, t.skill)).map((v) => v.toFixed(1)).join(",")).join(" ");
+  // solved topics sit at their skill radius; unsolved collapse to the exact
+  // center so a wall of empty axes doesn't bunch into a ring of dots
+  const radiusOf = (t) => (t.count ? Math.max(0.05, t.skill) : 0);
+  const poly = topics.map((t, i) => pt(i, radiusOf(t)).map((v) => v.toFixed(1)).join(",")).join(" ");
 
   // ring difficulty labels sit just right of the top spoke (cx, cy - R*frac)
   const ringLabels = rings.map((r) => ({
@@ -189,8 +192,9 @@ export function SkillRadar({ topics, lo = 800, hi = 2000 }) {
       })}
       {/* skill polygon */}
       <polygon points={poly} fill="var(--accent)" fillOpacity="0.16" stroke="var(--accent)" strokeWidth="2" strokeLinejoin="round" />
-      {/* vertices */}
+      {/* vertices — none for unsolved topics (they'd pile up at the center) */}
       {topics.map((t, i) => {
+        if (!t.count) return null;
         const [px, py] = pt(i, Math.max(0.05, t.skill));
         return <circle key={i} cx={px} cy={py} r={hover === i ? 6 : 3.8} fill="var(--panel)"
           stroke="var(--accent)" strokeWidth="2"
@@ -207,7 +211,7 @@ export function SkillRadar({ topics, lo = 800, hi = 2000 }) {
         const a = angle(i);
         const anchor = Math.abs(Math.cos(a)) < 0.25 ? "middle" : Math.cos(a) > 0 ? "start" : "end";
         return (
-          <g key={i}>
+          <g key={i} opacity={t.count ? 1 : 0.45}>
             <text x={lx} y={ly} textAnchor={anchor} dominantBaseline="middle" fontSize="12.5"
               fontWeight={hover === i ? 700 : 500}
               fill={hover === i ? "var(--text)" : "var(--text-dim)"}>{t.name}</text>
