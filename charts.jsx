@@ -7,10 +7,10 @@ import { useState } from "react";
 import { fmtDate, rankOf } from "./lib.js";
 
 /* ---------------- Rating line chart ---------------- */
-function shortDate(iso) {
-  const [year, month] = iso.split("-").map(Number);
-  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  return `${months[month - 1]} '${String(year).slice(2)}`;
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function shortDateTs(ts) {
+  const d = new Date(ts);
+  return `${MONTHS[d.getUTCMonth()]} '${String(d.getUTCFullYear()).slice(2)}`;
 }
 
 export function RatingChart({ history }) {
@@ -22,7 +22,12 @@ export function RatingChart({ history }) {
   const lo = Math.floor((minR - 70) / 100) * 100;
   // top of the chart = current rating + 500 of headroom (guard against a past peak)
   const hi = Math.ceil(Math.max(cur + 500, maxR) / 100) * 100;
-  const x = (i) => history.length <= 1 ? W / 2 : padL + (i / (history.length - 1)) * (W - padL - padR);
+  // x is proportional to actual time, so multi-year gaps read wider than day gaps
+  const times = history.map((h) => Date.parse(h.date));
+  const tMin = Math.min(...times), tMax = Math.max(...times);
+  const x = (i) => (history.length <= 1 || tMax === tMin)
+    ? W / 2
+    : padL + ((times[i] - tMin) / (tMax - tMin)) * (W - padL - padR);
   const y = (r) => padT + (1 - (r - lo) / (hi - lo)) * (H - padT - padB);
 
   const bands = [
@@ -40,14 +45,15 @@ export function RatingChart({ history }) {
   // dropping any that would collide with the current-rating marker
   const rankLines = bands.map((b) => b.lo).filter((r) => r > lo && r < hi && Math.abs(r - cur) > 40);
 
-  // pick up to 6 evenly-spaced x-axis date labels, always including first + last
+  // x-axis ticks evenly spaced across the *time* span (not per-contest), so
+  // labels stay readable even when contests cluster together
   const maxLabels = 6;
-  const step = Math.max(1, Math.ceil((history.length - 1) / (maxLabels - 1)));
-  const xAxisIdx = [...new Set([
-    0,
-    ...history.map((_, i) => i).filter((i) => i % step === 0),
-    history.length - 1,
-  ])];
+  const xTicks = (tMax === tMin)
+    ? [{ px: W / 2, ts: tMin }]
+    : Array.from({ length: maxLabels }, (_, k) => {
+        const frac = k / (maxLabels - 1);
+        return { px: padL + frac * (W - padL - padR), ts: tMin + frac * (tMax - tMin) };
+      });
 
   return (
     <div style={{ position: "relative", width: "100%" }}>
@@ -73,14 +79,14 @@ export function RatingChart({ history }) {
         <text x={W - padR} y={y(cur) - 4} textAnchor="end" fontSize="11" fontWeight="600"
           fontFamily="var(--font-mono)" fill={rankOf(cur).color}>{cur}</text>
         {/* x-axis date labels — anchor the edges inward so they don't clip */}
-        {xAxisIdx.map((i) => {
-          const anchor = i === 0 ? "start" : i === history.length - 1 ? "end" : "middle";
+        {xTicks.map((t, k) => {
+          const anchor = k === 0 ? "start" : k === xTicks.length - 1 ? "end" : "middle";
           return (
-            <g key={i}>
-              <line x1={x(i)} y1={H - padB + 4} x2={x(i)} y2={H - padB + 10}
+            <g key={k}>
+              <line x1={t.px} y1={H - padB + 4} x2={t.px} y2={H - padB + 10}
                 stroke="var(--border)" strokeWidth="1" />
-              <text x={x(i)} y={H - padB + 22} textAnchor={anchor} fontSize="10"
-                fontFamily="var(--font-mono)" fill="var(--text-faint)">{shortDate(history[i].date)}</text>
+              <text x={t.px} y={H - padB + 22} textAnchor={anchor} fontSize="10"
+                fontFamily="var(--font-mono)" fill="var(--text-faint)">{shortDateTs(t.ts)}</text>
             </g>
           );
         })}
