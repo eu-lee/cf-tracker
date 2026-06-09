@@ -20,8 +20,9 @@ create table profiles (
   contribution   integer,
   friends        integer,
   registered     text,
-  rating_history jsonb default '[]',
-  radar_filter   jsonb        -- null = solved topics, "all" = all, [..] = custom
+  rating_history    jsonb default '[]',
+  radar_filter      jsonb,                  -- null = solved topics, "all" = all, [..] = custom
+  radar_show_rating boolean default false
 );
 
 create table problems (

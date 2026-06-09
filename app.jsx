@@ -58,6 +58,7 @@ export default function App() {
   const [notes, setNotes] = useState({});
   const [tagOverrides, setTagOverrides] = useState({});
   const [radarFilter, setRadarFilter] = useState(null); // null = show all
+  const [radarShowRating, setRadarShowRating] = useState(false);
   const [openProblem, setOpenProblem] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [lastSynced, setLastSynced] = useState(null);
@@ -93,6 +94,8 @@ export default function App() {
         setUser(null);
         setProblems([]);
         setRatingHistory([]);
+        setRadarFilter(null);
+        setRadarShowRating(false);
         setHydrated(false);
       }
     });
@@ -105,12 +108,13 @@ export default function App() {
     let cancelled = false;
     fetch("/api/data")
       .then((r) => r.json())
-      .then(({ handle, user, ratingHistory, problems, radarFilter }) => {
+      .then(({ handle, user, ratingHistory, problems, radarFilter, radarShowRating }) => {
         if (cancelled) return;
         setHandle(handle ?? null);
         if (user) setUser(user);
         if (ratingHistory) setRatingHistory(ratingHistory);
-        if (radarFilter) setRadarFilter(radarFilter);
+        setRadarFilter(radarFilter ?? null);
+        setRadarShowRating(Boolean(radarShowRating));
         if (problems) {
           // Unpack notes and tagOverrides that were stored on each problem row
           const noteMap = {}, tagMap = {};
@@ -185,6 +189,15 @@ export default function App() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ radarFilter: filter }),
+    });
+  }
+
+  function saveRadarShowRating(showRating) {
+    setRadarShowRating(showRating);
+    fetch("/api/prefs", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ radarShowRating: showRating }),
     });
   }
 
@@ -290,6 +303,7 @@ export default function App() {
           <Dashboard user={user} ratingHistory={ratingHistory} problems={problems}
             tagOverrides={tagOverrides} allTagOptions={allTagOptions}
             radarFilter={radarFilter} onSaveRadarFilter={saveRadarFilter}
+            radarShowRating={radarShowRating} onSaveRadarShowRating={saveRadarShowRating}
             onSaveTags={saveTags} onOpenProblem={setOpenProblem} onGoAllSolved={() => setTab("all")} />
         ) : (
           <AllSolved problems={problems} notes={notes} tagOverrides={tagOverrides}

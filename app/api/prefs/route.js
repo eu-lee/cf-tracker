@@ -6,10 +6,18 @@ export async function PATCH(req) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const { radarFilter } = await req.json();
+  const body = await req.json();
+  const updates = {};
+  if (Object.hasOwn(body, "radarFilter")) updates.radar_filter = body.radarFilter ?? null;
+  if (Object.hasOwn(body, "radarShowRating")) updates.radar_show_rating = Boolean(body.radarShowRating);
+
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: "No preferences provided" }, { status: 400 });
+  }
+
   const { error } = await supabase
     .from("profiles")
-    .update({ radar_filter: radarFilter ?? null })
+    .update(updates)
     .eq("id", user.id);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

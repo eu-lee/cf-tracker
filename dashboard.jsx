@@ -11,7 +11,6 @@ import {
   ratingInRange,
   recent,
   relDate,
-  topicStats,
   totals,
   typeDistribution,
   withTagOverrides,
@@ -49,7 +48,7 @@ function ProfileHero({ user, problems }) {
 }
 
 function EloByTopic({ stats }) {
-  const sorted = stats.slice().sort((a, b) => b.score - a.score).slice(0, 9);
+  const sorted = stats.slice().sort((a, b) => b.score - a.score || b.count - a.count || a.name.localeCompare(b.name));
   const lo = 1100, hi = 1950;
   return (
     <div className="panel animate-in" style={{ padding: 20 }}>
@@ -57,7 +56,7 @@ function EloByTopic({ stats }) {
         <span className="card-title">Elo by topic</span>
         <span className="label">estimated level</span>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 11, maxHeight: 390, overflowY: "auto", paddingRight: 4 }}>
         {sorted.map((s) => {
           const pct = Math.max(6, Math.min(100, ((s.score - lo) / (hi - lo)) * 100));
           const c = diffColor(s.score);
@@ -85,22 +84,22 @@ function WeakPoints({ topics }) {
         <span className="label">weakest first</span>
       </div>
       <p style={{ margin: "0 0 14px", fontSize: 12.5, color: "var(--text-faint)", lineHeight: 1.5 }}>
-        Lowest estimated level (weighted toward your hardest solves); untouched topics last.
+        Lowest estimate (weighted toward your hardest solves); unsolved topics last.
       </p>
       {/* ~3 rows visible, scroll for the rest */}
       <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 210, overflowY: "auto", paddingRight: 4 }}>
         {topics.map((t, i) => {
-          const untouched = !t.count;
+          const unsolved = !t.count;
           return (
             <div key={t.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 12px",
-              background: "var(--panel-2)", border: "1px solid var(--border-2)", borderRadius: 9, opacity: untouched ? 0.6 : 1 }}>
+              background: "var(--panel-2)", border: "1px solid var(--border-2)", borderRadius: 9, opacity: unsolved ? 0.6 : 1 }}>
               <span className="mono" style={{ fontSize: 12, color: "var(--text-faint)", width: 16, flexShrink: 0 }}>{i + 1}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div>
                 <div style={{ fontSize: 11.5, color: "var(--text-faint)" }}>
-                  {untouched
-                    ? "untouched"
-                    : <>{t.count} solved · level <span className="mono" style={{ color: diffColor(t.score) }}>{t.score}</span></>}
+                  {unsolved
+                    ? "unsolved"
+                    : <>{t.count} solved · <span className="mono" style={{ color: diffColor(t.score) }}>{t.score}</span></>}
                 </div>
               </div>
             </div>
@@ -115,19 +114,43 @@ function WeakPoints({ topics }) {
 let _problemset = null;
 async function getProblemset() {
   if (_problemset) return _problemset;
-  const res = await fetch("https://codeforces.com/api/problemset.problems", { cache: "no-store" });
-  const json = await res.json();
-  if (json.status !== "OK") throw new Error(json.comment || "Codeforces API error");
-  _problemset = (json.result.problems || []).filter((p) => p.rating && p.contestId);
+  const [problemsetRes, contestRes] = await Promise.all([
+    fetch("https://codeforces.com/api/problemset.problems", { cache: "no-store" }),
+    fetch("https://codeforces.com/api/contest.list?gym=false", { cache: "no-store" }).catch(() => null),
+  ]);
+  const problemsetJson = await problemsetRes.json();
+  if (problemsetJson.status !== "OK") throw new Error(problemsetJson.comment || "Codeforces API error");
+
+  let contestStartById = new Map();
+  if (contestRes?.ok) {
+    const contestJson = await contestRes.json();
+    if (contestJson.status === "OK") {
+      contestStartById = new Map((contestJson.result || []).map((c) => [c.id, c.startTimeSeconds]));
+    }
+  }
+
+  _problemset = (problemsetJson.result.problems || [])
+    .filter((p) => p.rating && p.contestId)
+    .map((p) => ({ ...p, contestStartTimeSeconds: contestStartById.get(p.contestId) || null }));
   return _problemset;
 }
+
+const RECENT_CONTEST_YEARS = 3;
+const RECENT_CONTEST_SECONDS = Math.round(RECENT_CONTEST_YEARS * 365.25 * 24 * 60 * 60);
+const THEME_CONFIDENCE_SOLVES = 5;
+const THEMECP_RANGE_BELOW = 700;
+const THEMECP_RANGE_ABOVE = 100;
+
+const RELATED_THEME_TAGS = {
+  Graphs: ["graphs", "dfs and similar", "trees", "dsu", "shortest paths", "graph matchings"],
+};
 
 const GET_PROBLEM_SPECIALS = [
   { value: "__weak__", label: "Weak problem" },
   { value: "__random__", label: "Random" },
 ];
 
-// ThemeCP-style picker: an unsolved problem near your level for a chosen theme.
+// ThemeCP-style picker: a random rated problem near your level for a chosen theme.
 function GetProblem({ problems, topics, weakestName, userRating }) {
   const [value, setValue] = React.useState("__weak__");
   const [open, setOpen] = React.useState(false);
@@ -137,10 +160,9 @@ function GetProblem({ problems, topics, weakestName, userRating }) {
   const [result, setResult] = React.useState(null);
   const pickerRef = React.useRef(null);
 
-  const solvedIds = React.useMemo(() => new Set(problems.map((p) => `${p.contestId}${p.index}`)), [problems]);
-  const scoreByName = React.useMemo(() => {
+  const topicByName = React.useMemo(() => {
     const m = {};
-    topics.forEach((t) => { m[t.name] = t.score; });
+    topics.forEach((t) => { m[t.name] = t; });
     return m;
   }, [topics]);
 
@@ -182,23 +204,41 @@ function GetProblem({ problems, topics, weakestName, userRating }) {
     setError(null);
     try {
       const all = await getProblemset();
-      let group = null, base;
-      if (value === "__random__") { group = null; base = userRating || 1200; }
-      else if (value === "__weak__") { group = weakestName || null; base = (group && scoreByName[group]) || userRating || 1200; }
-      else { group = value; base = scoreByName[value] || userRating || 1200; }
+      const solvedIds = new Set(problems.map((p) => `${p.contestId}${p.index}`));
+      const overallRating = userRating || 1200;
+      let group = null;
+      if (value === "__weak__") group = weakestName || null;
+      else if (value !== "__random__") group = value;
 
-      const target = Math.round(base / 100) * 100;
-      const inGroup = (p) => !group || p.tags.some((rt) => (TAG_GROUPS[rt] || rt) === group);
+      const theme = group ? topicByName[group] : null;
+      const confidence = theme ? Math.min(1, (theme.count || 0) / THEME_CONFIDENCE_SOLVES) : 0;
+      const blendedLevel = theme?.score
+        ? overallRating * (1 - confidence) + theme.score * confidence
+        : overallRating;
+      const target = Math.round(blendedLevel / 100) * 100;
+      const rangeLo = Math.max(800, Math.floor((overallRating - THEMECP_RANGE_BELOW) / 100) * 100);
+      const rangeHi = Math.max(rangeLo, Math.ceil((overallRating + THEMECP_RANGE_ABOVE) / 100) * 100);
+      const relatedTags = group ? new Set(RELATED_THEME_TAGS[group] || []) : null;
+      const inGroup = (p) => !group || p.tags.some((rt) => (TAG_GROUPS[rt] || rt) === group || relatedTags?.has(rt));
       const unsolved = (p) => !solvedIds.has(`${p.contestId}${p.index}`);
+      const recentCutoff = Math.floor(Date.now() / 1000) - RECENT_CONTEST_SECONDS;
 
-      // at-level to slightly above; widen the ceiling until something matches
+      // Search inside the ThemeCP-style expected range, biased toward the theme-adjusted level.
       let pick = null;
-      for (const pad of [100, 250, 400, 800]) {
-        const lo = Math.max(800, target - 100), hi = target + pad;
-        const cands = all.filter((p) => inGroup(p) && unsolved(p) && p.rating >= lo && p.rating <= hi);
+      for (const radius of [100, 200, 350, Number.POSITIVE_INFINITY]) {
+        const lo = Number.isFinite(radius) ? Math.max(rangeLo, target - radius) : rangeLo;
+        const hi = Number.isFinite(radius) ? Math.min(rangeHi, target + radius) : rangeHi;
+        const cands = all.filter((p) =>
+          inGroup(p) &&
+          unsolved(p) &&
+          p.rating >= lo &&
+          p.rating <= hi &&
+          p.contestStartTimeSeconds &&
+          p.contestStartTimeSeconds >= recentCutoff
+        );
         if (cands.length) { pick = cands[Math.floor(Math.random() * cands.length)]; break; }
       }
-      if (!pick) { setResult(null); setError("No unsolved problems found — try another theme."); }
+      if (!pick) { setResult(null); setError(`No recent rated problems found from the last ${RECENT_CONTEST_YEARS} years — try another theme.`); }
       else setResult(pick);
     } catch (e) {
       setError(e.message || "Could not reach Codeforces.");
@@ -211,7 +251,7 @@ function GetProblem({ problems, topics, weakestName, userRating }) {
     <div className="panel animate-in" style={{ padding: 20 }}>
       <div className="card-head">
         <span className="card-title">Get problem</span>
-        <span className="label">unsolved · near your level</span>
+        <span className="label">random · recent rated</span>
       </div>
       <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
         <div ref={pickerRef} style={{ position: "relative", flex: 1, minWidth: 0 }}>
@@ -554,9 +594,8 @@ function RadarFilterDropdown({ allTopics, filter, onChange }) {
   );
 }
 
-function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {}, allTagOptions = [], radarFilter = null, onSaveRadarFilter, onSaveTags, onOpenProblem, onGoAllSolved }) {
+function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {}, allTagOptions = [], radarFilter = null, radarShowRating = false, onSaveRadarFilter, onSaveRadarShowRating, onSaveTags, onOpenProblem, onGoAllSolved }) {
   const [range, setRange] = React.useState(RANGES[4]); // All
-  const [showRatingRadar, setShowRatingRadar] = React.useState(false);
 
   const allProblems = withTagOverrides(problems, tagOverrides);
   const windowed = withinDays(allProblems, range.days);
@@ -580,11 +619,10 @@ function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {},
     : radarUniverse.filter((t) => radarFilter.includes(t.name));
   const diff = difficultyDistribution(windowed);
   const types = typeDistribution(7, windowed);
-  const stats = topicStats(windowed);
-  // weak-points list: solved topics weakest-first, then untouched topics
+  // weak-points list: solved topics weakest-first, then unsolved topics
   const weakSolved = radarUniverse.filter((t) => t.count > 0).slice().sort((a, b) => a.score - b.score);
-  const untouchedTopics = radarUniverse.filter((t) => t.count === 0);
-  const weakList = [...weakSolved, ...untouchedTopics];
+  const unsolvedTopics = radarUniverse.filter((t) => t.count === 0);
+  const weakList = [...weakSolved, ...unsolvedTopics];
   const weakestName = weakSolved[0]?.name ?? null;
   const recentList = recent(5, allProblems);
   const history = ratingInRange(ratingHistory, range.days);
@@ -634,16 +672,15 @@ function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {},
           <div className="card-head">
             <span className="card-title">Skill by topic</span>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span className="label">est. level</span>
               {hasData && user?.rating > 0 && (
                 <button
                   type="button"
                   className="btn"
-                  aria-pressed={showRatingRadar}
-                  onClick={() => setShowRatingRadar((v) => !v)}
+                  aria-pressed={radarShowRating}
+                  onClick={() => onSaveRadarShowRating?.(!radarShowRating)}
                   style={{ padding: "5px 9px", fontSize: 12 }}
                 >
-                  {showRatingRadar ? "Hide rating" : "Show rating"}
+                  {radarShowRating ? "Hide rating" : "Show rating"}
                 </button>
               )}
               {hasData && (
@@ -662,7 +699,7 @@ function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {},
                   lo={radarLo}
                   hi={radarHiWithRating}
                   rating={user?.rating || 0}
-                  showRating={showRatingRadar}
+                  showRating={radarShowRating}
                 />
               : <Empty msg="Select at least 3 topics to render the radar." h={300} />
             : <Empty msg="Nothing solved in this period." h={300} />}
@@ -691,7 +728,7 @@ function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {},
           <GetProblem problems={allProblems} topics={radarUniverse} weakestName={weakestName} userRating={user?.rating} />
         </div>
         {hasData
-          ? <EloByTopic stats={stats} />
+          ? <EloByTopic stats={radarUniverse} />
           : <div className="panel animate-in" style={{ padding: 20 }}>
               <div className="card-head"><span className="card-title">Elo by topic</span><span className="label">estimated level</span></div>
               <Empty msg="Nothing solved in this period." />

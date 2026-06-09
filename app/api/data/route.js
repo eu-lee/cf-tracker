@@ -36,6 +36,7 @@ export async function GET() {
 
   const ratingHistory = profileData?.rating_history ?? [];
   const radarFilter = profileData?.radar_filter ?? null;
+  const radarShowRating = profileData?.radar_show_rating ?? false;
 
   const problems = (problemsData ?? []).map((p) => ({
     id: p.id,
@@ -51,5 +52,5 @@ export async function GET() {
     tagOverride: p.tag_overrides ?? null,
   }));
 
-  return NextResponse.json({ handle, user: cfUser, ratingHistory, problems, radarFilter });
+  return NextResponse.json({ handle, user: cfUser, ratingHistory, problems, radarFilter, radarShowRating });
 }
