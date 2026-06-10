@@ -465,9 +465,9 @@ body {
   height: 17px;
   margin-top: -5.5px;
   border-radius: 50%;
-  border: 2px solid var(--panel);
+  border: 3px solid var(--panel-2);
   background: var(--text);
-  box-shadow: 0 1px 6px rgba(0,0,0,.24);
+  box-shadow: 0 0 0 1px var(--panel-2), 0 1px 6px rgba(0,0,0,.24);
   cursor: grab;
   pointer-events: auto;
 }
@@ -476,9 +476,9 @@ body {
   width: 17px;
   height: 17px;
   border-radius: 50%;
-  border: 2px solid var(--panel);
+  border: 3px solid var(--panel-2);
   background: var(--text);
-  box-shadow: 0 1px 6px rgba(0,0,0,.24);
+  box-shadow: 0 0 0 1px var(--panel-2), 0 1px 6px rgba(0,0,0,.24);
   cursor: grab;
   pointer-events: auto;
 }
