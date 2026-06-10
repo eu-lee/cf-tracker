@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TAG_GROUPS } from "./data";
 import { AllSolved, ProblemWindow } from "./allsolved";
+import CustomProblemModal from "./CustomProblemModal";
 import { Dashboard } from "./dashboard";
 import { Login, HandleSetup } from "./auth";
 import { createClient } from "./lib/supabase/client";
@@ -60,6 +61,7 @@ export default function App() {
   const [radarFilter, setRadarFilter] = useState(null); // null = show all
   const [radarShowRating, setRadarShowRating] = useState(false);
   const [openProblem, setOpenProblem] = useState(null);
+  const [customEditor, setCustomEditor] = useState(null); // null = closed; { problem: null|obj }
   const [syncing, setSyncing] = useState(false);
   const [lastSynced, setLastSynced] = useState(null);
   const [syncError, setSyncError] = useState(null);
@@ -211,6 +213,43 @@ export default function App() {
     });
   }
 
+  async function createCustomProblem(payload) {
+    const res = await fetch("/api/problems", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error ?? "could not create problem");
+    setProblems((prev) => [body.problem, ...prev]);
+  }
+
+  async function updateCustomProblem(id, payload) {
+    const res = await fetch("/api/problems", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, ...payload }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error ?? "could not update problem");
+    setProblems((prev) => prev.map((p) => (p.id === id ? body.problem : p)));
+  }
+
+  async function deleteCustomProblem(id) {
+    setProblems((prev) => prev.filter((p) => p.id !== id));
+    setOpenProblem((cur) => (cur?.id === id ? null : cur));
+    const res = await fetch("/api/problems", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    if (!res.ok) {
+      // best-effort: a failed delete just leaves the row; surface via console
+      const body = await res.json().catch(() => ({}));
+      console.error("delete custom problem:", body.error ?? res.statusText);
+    }
+  }
+
   const allTagOptions = useMemo(() => (
     Array.from(new Set([
       ...Object.keys(TAG_GROUPS),
@@ -304,10 +343,12 @@ export default function App() {
             tagOverrides={tagOverrides} allTagOptions={allTagOptions}
             radarFilter={radarFilter} onSaveRadarFilter={saveRadarFilter}
             radarShowRating={radarShowRating} onSaveRadarShowRating={saveRadarShowRating}
-            onSaveTags={saveTags} onOpenProblem={setOpenProblem} onGoAllSolved={() => setTab("all")} />
+            onSaveTags={saveTags} onOpenProblem={setOpenProblem} onGoAllSolved={() => setTab("all")}
+            onAddCustom={() => setCustomEditor({ problem: null })} />
         ) : (
           <AllSolved problems={problems} notes={notes} tagOverrides={tagOverrides}
-            allTagOptions={allTagOptions} onOpen={setOpenProblem} />
+            allTagOptions={allTagOptions} onOpen={setOpenProblem}
+            onAddCustom={() => setCustomEditor({ problem: null })} />
         )}
       </main>
 
@@ -321,6 +362,20 @@ export default function App() {
           onClose={() => setOpenProblem(null)}
           onSave={saveNote}
           onSaveTags={saveTags}
+          onEdit={(p) => { setOpenProblem(null); setCustomEditor({ problem: p }); }}
+          onDelete={deleteCustomProblem}
+        />
+      )}
+
+      {customEditor && (
+        <CustomProblemModal
+          key={customEditor.problem?.id ?? "new"}
+          initial={customEditor.problem}
+          userId={session?.user?.id}
+          allTagOptions={allTagOptions}
+          onClose={() => setCustomEditor(null)}
+          onCreate={createCustomProblem}
+          onUpdate={updateCustomProblem}
         />
       )}
     </div>

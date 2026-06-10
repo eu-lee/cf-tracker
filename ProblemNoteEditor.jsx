@@ -1,10 +1,17 @@
 "use client";
 
 import { EditorContent, useEditor } from "@tiptap/react";
+import { Node, mergeAttributes } from "@tiptap/core";
+import CodeBlock from "@tiptap/extension-code-block";
+import { NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Mathematics } from "@tiptap/extension-mathematics";
 import { TextSelection } from "@tiptap/pm/state";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createClient } from "./lib/supabase/client";
+
+export const IMAGES_BUCKET = "problem-images";
+const ACCEPT_IMAGES = "image/png,image/jpeg,image/webp,image/gif";
 
 function textToDoc(text = "") {
   const lines = text.split(/\n{2,}/);
@@ -17,18 +24,43 @@ function textToDoc(text = "") {
   return { type: "doc", content: content.length ? content : [{ type: "paragraph" }] };
 }
 
-function normalizeContent(value) {
+export function normalizeRichContent(value) {
   if (value && typeof value === "object" && value.type === "tiptap" && value.doc) return value.doc;
   if (typeof value === "string") return textToDoc(value);
   return textToDoc("");
 }
 
-function savePayload(editor) {
+export function richTextPayload(editor) {
   return {
     type: "tiptap",
     doc: editor.getJSON(),
     text: editor.getText("\n"),
   };
+}
+
+export function richTextPlainText(value) {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (value.type === "tiptap") return value.text || "";
+  return "";
+}
+
+export function richTextIsEmpty(value) {
+  return richTextPlainText(value).trim() === "" && !richTextImagePaths(value).length;
+}
+
+export function richTextImagePaths(value) {
+  const doc = value && typeof value === "object" && value.type === "tiptap" ? value.doc : value;
+  const paths = new Set();
+  function visit(node) {
+    if (!node || typeof node !== "object") return;
+    if (node.type === "problemImage" && typeof node.attrs?.path === "string" && node.attrs.path) {
+      paths.add(node.attrs.path);
+    }
+    if (Array.isArray(node.content)) node.content.forEach(visit);
+  }
+  visit(doc);
+  return [...paths];
 }
 
 function preserveSelection(tr, from) {
@@ -105,6 +137,146 @@ function renderMathStrings(editor, skipCursor = null) {
   return inline || block;
 }
 
+function CopyableCodeBlockView({ node }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(node.textContent || "");
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <NodeViewWrapper as="pre" className="problem-code-block">
+      <button type="button" className="problem-code-copy" contentEditable={false} onClick={copy}>
+        {copied ? "Copied" : "Copy"}
+      </button>
+      <NodeViewContent as="code" />
+    </NodeViewWrapper>
+  );
+}
+
+const CopyableCodeBlock = CodeBlock.extend({
+  addNodeView() {
+    return ReactNodeViewRenderer(CopyableCodeBlockView);
+  },
+});
+
+function ProblemImageView({ node, selected }) {
+  const path = node.attrs.path;
+  const alt = node.attrs.alt || "problem screenshot";
+  const [src, setSrc] = useState(null);
+
+  useEffect(() => {
+    if (!path) return undefined;
+    let cancelled = false;
+    const supabase = createClient();
+    supabase.storage.from(IMAGES_BUCKET).createSignedUrl(path, 3600).then(({ data }) => {
+      if (!cancelled) setSrc(data?.signedUrl ?? null);
+    });
+    return () => { cancelled = true; };
+  }, [path]);
+
+  return (
+    <NodeViewWrapper className={`problem-image-node${selected ? " is-selected" : ""}`} data-path={path}>
+      {src
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={src} alt={alt} draggable={false} />
+        : <span className="problem-image-loading">Loading image...</span>}
+    </NodeViewWrapper>
+  );
+}
+
+const ProblemImage = Node.create({
+  name: "problemImage",
+  group: "block",
+  atom: true,
+  draggable: true,
+
+  addAttributes() {
+    return {
+      path: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-path"),
+        renderHTML: (attributes) => attributes.path ? { "data-path": attributes.path } : {},
+      },
+      alt: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("alt"),
+        renderHTML: (attributes) => attributes.alt ? { alt: attributes.alt } : {},
+      },
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: "img[data-path]" }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return ["img", mergeAttributes(HTMLAttributes)];
+  },
+
+  addCommands() {
+    return {
+      insertProblemImage: (attrs) => ({ commands }) => commands.insertContent({ type: this.name, attrs }),
+    };
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(ProblemImageView);
+  },
+});
+
+function imageFilesFrom(list) {
+  return Array.from(list || []).filter((file) => file.type?.startsWith("image/"));
+}
+
+async function insertUploadedImages(view, files, uploadImage) {
+  const type = view.state.schema.nodes.problemImage;
+  if (!type || !uploadImage) return false;
+  for (const file of files) {
+    const path = await uploadImage(file);
+    if (!path) continue;
+    const tr = view.state.tr.replaceSelectionWith(type.create({ path, alt: file.name || "problem screenshot" }));
+    view.dispatch(tr.scrollIntoView());
+  }
+  return true;
+}
+
+export function richEditorExtensions({ images = false, mathClicks = true } = {}) {
+  const extensions = [
+    StarterKit.configure({
+      heading: { levels: [2, 3] },
+      codeBlock: false,
+    }),
+    CopyableCodeBlock,
+    Mathematics.configure({
+      inlineOptions: mathClicks ? {
+        onClick: (node, pos) => {
+          window.dispatchEvent(new CustomEvent("problem-note-math-click", {
+            detail: { kind: "inline", pos, nodeSize: node.nodeSize, latex: node.attrs.latex || "" },
+          }));
+        },
+      } : undefined,
+      blockOptions: mathClicks ? {
+        onClick: (node, pos) => {
+          window.dispatchEvent(new CustomEvent("problem-note-math-click", {
+            detail: { kind: "block", pos, nodeSize: node.nodeSize, latex: node.attrs.latex || "" },
+          }));
+        },
+      } : undefined,
+      katexOptions: {
+        throwOnError: false,
+      },
+    }),
+  ];
+  if (images) extensions.push(ProblemImage);
+  return extensions;
+}
+
 function selectionInsideRawMath(editor, kind) {
   const { $from } = editor.state.selection;
   const parent = $from.parent;
@@ -132,59 +304,66 @@ function selectionInsideRawMath(editor, kind) {
 }
 
 export function notePlainText(value) {
-  if (!value) return "";
-  if (typeof value === "string") return value;
-  if (value.type === "tiptap") return value.text || "";
-  return "";
+  return richTextPlainText(value);
 }
 
-export default function ProblemNoteEditor({ value, onChange }) {
+export default function ProblemNoteEditor({
+  value,
+  onChange,
+  enableImages = false,
+  onUploadImage,
+  ariaLabel = "My notes",
+  minHeight,
+}) {
   const activeRawMathRef = useRef(null);
   const shellRef = useRef(null);
+  const fileRef = useRef(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const editor = useEditor({
     immediatelyRender: false,
-    extensions: [
-      StarterKit.configure({
-        heading: { levels: [2, 3] },
-      }),
-      Mathematics.configure({
-        inlineOptions: {
-          onClick: (node, pos) => {
-            window.dispatchEvent(new CustomEvent("problem-note-math-click", {
-              detail: { kind: "inline", pos, nodeSize: node.nodeSize, latex: node.attrs.latex || "" },
-            }));
-          },
-        },
-        blockOptions: {
-          onClick: (node, pos) => {
-            window.dispatchEvent(new CustomEvent("problem-note-math-click", {
-              detail: { kind: "block", pos, nodeSize: node.nodeSize, latex: node.attrs.latex || "" },
-            }));
-          },
-        },
-        katexOptions: {
-          throwOnError: false,
-        },
-      }),
-    ],
-    content: normalizeContent(value),
+    extensions: richEditorExtensions({ images: enableImages, mathClicks: true }),
+    content: normalizeRichContent(value),
     editorProps: {
       attributes: {
         class: "problem-note-editor",
-        "aria-label": "My notes",
+        "aria-label": ariaLabel,
+        style: minHeight ? `min-height: ${minHeight}px` : undefined,
+      },
+      handlePaste(view, event) {
+        if (!enableImages || !onUploadImage) return false;
+        const files = imageFilesFrom(event.clipboardData?.files);
+        if (!files.length) return false;
+        event.preventDefault();
+        setUploadingImage(true);
+        insertUploadedImages(view, files, onUploadImage).finally(() => setUploadingImage(false));
+        return true;
+      },
+      handleDrop(view, event) {
+        if (!enableImages || !onUploadImage) return false;
+        const files = imageFilesFrom(event.dataTransfer?.files);
+        if (!files.length) return false;
+        event.preventDefault();
+        const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
+        if (coords) {
+          const tr = view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(coords.pos)));
+          view.dispatch(tr);
+        }
+        setUploadingImage(true);
+        insertUploadedImages(view, files, onUploadImage).finally(() => setUploadingImage(false));
+        return true;
       },
     },
     onCreate({ editor }) {
       if (typeof value === "string" && value.includes("$")) {
         renderMathStrings(editor);
-        onChange(savePayload(editor));
+        onChange(richTextPayload(editor));
       }
     },
     onUpdate({ editor }) {
       if (!activeRawMathRef.current && editor.getText().includes("$")) {
         migrateInlineMathStrings(editor);
       }
-      onChange(savePayload(editor));
+      onChange(richTextPayload(editor));
     },
   });
 
@@ -253,7 +432,7 @@ export default function ProblemNoteEditor({ value, onChange }) {
       if (!selectionInsideRawMath(editor, "inline") && !selectionInsideRawMath(editor, "block")) {
         activeRawMathRef.current = null;
       }
-      if (changed) onChange(savePayload(editor));
+      if (changed) onChange(richTextPayload(editor));
     }
 
     editor.on("selectionUpdate", renderWhenMathLosesSelection);
@@ -272,6 +451,20 @@ export default function ProblemNoteEditor({ value, onChange }) {
     if (pos == null) return;
     activeRawMathRef.current = { kind: "block" };
     editor.chain().focus().insertContent("$$$$").setTextSelection(pos + 2).run();
+  }
+
+  async function uploadFromPicker(files) {
+    if (!editor || !onUploadImage) return;
+    setUploadingImage(true);
+    try {
+      for (const file of imageFilesFrom(files)) {
+        const path = await onUploadImage(file);
+        if (path) editor.chain().focus().insertProblemImage({ path, alt: file.name || "problem screenshot" }).run();
+      }
+    } finally {
+      setUploadingImage(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
   }
 
   if (!editor) {
@@ -299,15 +492,55 @@ export default function ProblemNoteEditor({ value, onChange }) {
         <button type="button" className="btn" onClick={() => editor.chain().focus().toggleCodeBlock().run()} aria-pressed={editor.isActive("codeBlock")}>Code</button>
         <button type="button" className="btn" onClick={insertInlineMath}>$x$</button>
         <button type="button" className="btn" onClick={insertBlockMath}>$$</button>
+        {enableImages && (
+          <>
+            <input ref={fileRef} type="file" accept={ACCEPT_IMAGES} hidden onChange={(e) => uploadFromPicker(e.target.files)} />
+            <button type="button" className="btn" onClick={() => fileRef.current?.click()} disabled={uploadingImage}>
+              {uploadingImage ? "..." : "Image"}
+            </button>
+          </>
+        )}
       </div>
       <div onBlur={(e) => {
         if (e.currentTarget.contains(e.relatedTarget)) return;
         activeRawMathRef.current = null;
         renderMathStrings(editor);
-        onChange(savePayload(editor));
+        onChange(richTextPayload(editor));
       }}>
         <EditorContent editor={editor} />
       </div>
+    </div>
+  );
+}
+
+export function ProblemRichTextViewer({ value, emptyText = "No description." }) {
+  const hasContent = !richTextIsEmpty(value);
+  const editor = useEditor({
+    immediatelyRender: false,
+    editable: false,
+    extensions: richEditorExtensions({ images: true, mathClicks: false }),
+    content: normalizeRichContent(value),
+    editorProps: {
+      attributes: {
+        class: "problem-note-editor problem-rich-viewer",
+        "aria-label": "Problem details",
+      },
+    },
+  });
+
+  if (!hasContent) {
+    return <span style={{ fontSize: 12.5, color: "var(--text-faint)" }}>{emptyText}</span>;
+  }
+  if (!editor) {
+    return (
+      <div className="problem-note-editor-shell problem-rich-viewer-shell">
+        <div className="problem-note-editor problem-note-editor-empty">Loading details...</div>
+      </div>
+    );
+  }
+  return (
+    <div className="problem-note-editor-shell problem-rich-viewer-shell">
+      <EditorContent editor={editor} />
     </div>
   );
 }

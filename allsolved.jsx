@@ -5,12 +5,46 @@ import React from "react";
 import { TAG_GROUPS } from "./data.js";
 import { fmtDate, relDate, withTagOverrides } from "./lib.js";
 import { DiffBadge, Latex, Tag } from "./components.jsx";
+import { createClient } from "./lib/supabase/client";
+import { richTextPlainText } from "./ProblemNoteEditor.jsx";
+
+const IMAGES_BUCKET = "problem-images";
+
+// Resolve private storage paths into temporary signed URLs for display.
+function useSignedUrls(paths) {
+  const [urls, setUrls] = React.useState({});
+  const key = (paths ?? []).join("|");
+  React.useEffect(() => {
+    const list = paths ?? [];
+    if (!list.length) return; // callers render nothing when empty, so stale urls never show
+    let cancelled = false;
+    const supabase = createClient();
+    supabase.storage.from(IMAGES_BUCKET).createSignedUrls(list, 3600).then(({ data }) => {
+      if (cancelled || !data) return;
+      const map = {};
+      data.forEach((d) => { if (d.signedUrl && d.path) map[d.path] = d.signedUrl; });
+      setUrls(map);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return urls;
+}
 
 const ProblemNoteEditor = dynamic(() => import("./ProblemNoteEditor.jsx"), {
   ssr: false,
   loading: () => (
     <div className="problem-note-editor-shell">
       <div className="problem-note-editor problem-note-editor-empty">Loading notes...</div>
+    </div>
+  ),
+});
+
+const ProblemRichTextViewer = dynamic(() => import("./ProblemNoteEditor.jsx").then((mod) => mod.ProblemRichTextViewer), {
+  ssr: false,
+  loading: () => (
+    <div className="problem-note-editor-shell problem-rich-viewer-shell">
+      <div className="problem-note-editor problem-note-editor-empty">Loading details...</div>
     </div>
   ),
 });
@@ -25,10 +59,7 @@ function effNote(p, notes) {
 }
 
 function notePlainText(note) {
-  if (!note) return "";
-  if (typeof note === "string") return note;
-  if (note.type === "tiptap") return note.text || "";
-  return "";
+  return richTextPlainText(note);
 }
 
 function truncate(s, n) {
@@ -158,9 +189,17 @@ function TagEditor({ problemId, tags, allTagOptions, onSaveTags }) {
 }
 
 /* ---------------- detail window ---------------- */
-function ProblemWindow({ problem, notes, tagOverrides = {}, allTagOptions, onClose, onSave, onSaveTags }) {
+function ProblemWindow({ problem, notes, tagOverrides = {}, allTagOptions, onClose, onSave, onSaveTags, onEdit, onDelete }) {
   const effectiveProblem = { ...problem, tags: tagOverrides[problem.id] || problem.tags };
   const note = effNote(problem, notes);
+  const isCustom = Boolean(problem.isCustom);
+  const [detailsOpen, setDetailsOpen] = React.useState(false);
+
+  function handleDelete() {
+    if (window.confirm("Delete this custom problem? This also removes its screenshots.")) {
+      onDelete?.(problem.id);
+    }
+  }
 
   return (
     <div role="dialog" aria-modal="true" style={{
@@ -177,8 +216,14 @@ function ProblemWindow({ problem, notes, tagOverrides = {}, allTagOptions, onClo
           display: "flex", alignItems: "center", gap: 12,
         }}>
           <span className="mono" style={{ fontSize: 12, color: "var(--text-faint)" }}>
-            problem · {problem.contestId}{problem.index}
+            {isCustom ? "custom problem" : `problem · ${problem.contestId}${problem.index}`}
           </span>
+          {isCustom && (
+            <>
+              <button className="btn" onClick={() => onEdit?.(problem)} style={{ padding: "6px 12px", fontSize: 12.5 }}>edit</button>
+              <button className="btn" onClick={handleDelete} style={{ padding: "6px 12px", fontSize: 12.5, color: "var(--bad)" }}>delete</button>
+            </>
+          )}
           <button className="btn" onClick={onClose} aria-label="Close problem detail" style={{
             marginLeft: "auto", width: 36, height: 36, padding: 0,
             justifyContent: "center", fontSize: 22, lineHeight: 1,
@@ -191,19 +236,43 @@ function ProblemWindow({ problem, notes, tagOverrides = {}, allTagOptions, onClo
         <div className="panel animate-in" style={{ padding: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <DiffBadge rating={effectiveProblem.rating} />
-            <a
-              href={`https://codeforces.com/problemset/problem/${problem.contestId}/${problem.index}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ marginLeft: "auto", fontSize: 12.5, color: "var(--accent-text)", textDecoration: "none" }}
-            >
-              open on codeforces ↗
-            </a>
+            {isCustom ? (
+              <span className="chip" style={{ fontSize: 11 }}>custom</span>
+            ) : (
+              <a
+                href={`https://codeforces.com/problemset/problem/${problem.contestId}/${problem.index}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ marginLeft: "auto", fontSize: 12.5, color: "var(--accent-text)", textDecoration: "none" }}
+              >
+                open on codeforces ↗
+              </a>
+            )}
           </div>
 
           <h2 style={{ margin: "14px 0 4px", fontSize: 21, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--text)", lineHeight: 1.2 }}>
             {effectiveProblem.name}
           </h2>
+
+          {/* collapsible problem details (custom problems only) */}
+          {isCustom && (
+            <div className="custom-details" style={{ marginTop: 14 }}>
+              <button
+                type="button"
+                className="custom-details-toggle"
+                aria-expanded={detailsOpen}
+                onClick={() => setDetailsOpen((o) => !o)}
+              >
+                <span style={{ transform: detailsOpen ? "rotate(90deg)" : "none", transition: "transform .15s", display: "inline-block" }}>▶</span>
+                Problem details
+              </button>
+              {detailsOpen && (
+                <div className="custom-details-body">
+                  <ProblemRichTextViewer value={problem.description} />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* tags */}
           <div style={{ marginTop: 12 }}>
@@ -248,7 +317,7 @@ const COLS = [
   { key: "solvedAt", label: "Solved", sortable: true, align: "right" },
 ];
 
-function AllSolved({ problems = [], notes, tagOverrides = {}, allTagOptions = [], onOpen }) {
+function AllSolved({ problems = [], notes, tagOverrides = {}, allTagOptions = [], onOpen, onAddCustom }) {
   const all = React.useMemo(() => withTagOverrides(problems, tagOverrides), [problems, tagOverrides]);
   const [q, setQ] = React.useState("");
   const [sort, setSort] = React.useState({ key: "solvedAt", dir: -1 });
@@ -309,6 +378,11 @@ function AllSolved({ problems = [], notes, tagOverrides = {}, allTagOptions = []
               {sort.dir === -1 ? "↓" : "↑"}
             </button>
           </div>
+          {onAddCustom && (
+            <button className="btn btn-accent" onClick={onAddCustom} style={{ padding: "8px 13px", fontSize: 12.5 }}>
+              ＋ Custom problem
+            </button>
+          )}
         </div>
         {/* tag filter */}
         <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
@@ -363,7 +437,9 @@ function AllSolved({ problems = [], notes, tagOverrides = {}, allTagOptions = []
                     style={{ borderBottom: "1px solid var(--border-2)", cursor: "pointer" }}>
                     <td style={{ padding: "13px 16px", maxWidth: 320 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                        <span className="mono" style={{ fontSize: 11.5, color: "var(--text-faint)", flexShrink: 0 }}>{p.contestId}{p.index}</span>
+                        {p.isCustom
+                          ? <span className="chip custom-badge" style={{ flexShrink: 0 }}>custom</span>
+                          : <span className="mono" style={{ fontSize: 11.5, color: "var(--text-faint)", flexShrink: 0 }}>{p.contestId}{p.index}</span>}
                         <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{p.name}</span>
                       </div>
                       {preview && (
@@ -402,4 +478,4 @@ function AllSolved({ problems = [], notes, tagOverrides = {}, allTagOptions = []
   );
 }
 
-export { AllSolved, ProblemWindow };
+export { AllSolved, ProblemWindow, TagEditor, useSignedUrls, IMAGES_BUCKET };

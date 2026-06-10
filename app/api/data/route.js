@@ -50,6 +50,9 @@ export async function GET() {
     attempts: p.attempts,
     note: p.note ?? null,
     tagOverride: p.tag_overrides ?? null,
+    isCustom: p.is_custom ?? false,
+    description: p.description ?? null,
+    images: p.images ?? [],
   }));
 
   return NextResponse.json({ handle, user: cfUser, ratingHistory, problems, radarFilter, radarShowRating });

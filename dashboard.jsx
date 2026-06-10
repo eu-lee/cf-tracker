@@ -526,16 +526,17 @@ function GetProblem({ problems, topics, weakestName, userRating }) {
 }
 
 function EditableTagList({ problem, onSaveTags }) {
-  function removeTag(tag) {
+  function removeTag(event, tag) {
+    event.stopPropagation();
     onSaveTags(problem.id, problem.tags.filter((t) => t !== tag));
   }
 
   return (
-    <div className="recent-tags" onClick={(e) => e.stopPropagation()}>
+    <div className="recent-tags">
       {problem.tags.map((t) => (
         <span key={t} className="recent-tag">
           <span>{TAG_GROUPS[t] || t}</span>
-          <button type="button" aria-label={`Remove ${(TAG_GROUPS[t] || t)} tag`} onClick={() => removeTag(t)}>×</button>
+          <button type="button" aria-label={`Remove ${(TAG_GROUPS[t] || t)} tag`} onClick={(e) => removeTag(e, t)}>×</button>
         </span>
       ))}
     </div>
@@ -635,7 +636,7 @@ function TagPicker({ problem, allTagOptions, onSaveTags }) {
 
 function RecentTags({ problem, allTagOptions, onSaveTags }) {
   return (
-    <div className="recent-tag-lane" onClick={(e) => e.stopPropagation()}>
+    <div className="recent-tag-lane">
       <EditableTagList problem={problem} onSaveTags={onSaveTags} />
       <div className="recent-tag-meta">
         <span className="recent-solved-age">{relDate(problem.solvedAt)}</span>
@@ -645,14 +646,21 @@ function RecentTags({ problem, allTagOptions, onSaveTags }) {
   );
 }
 
-function RecentList({ problems, allTagOptions, onOpen, onViewAll, onSaveTags }) {
+function RecentList({ problems, allTagOptions, onOpen, onViewAll, onSaveTags, onAddCustom }) {
   return (
     <div className="panel animate-in" style={{ padding: 20 }}>
       <div className="card-head">
         <span className="card-title">Recently solved</span>
-        <button className="btn" style={{ padding: "5px 10px", fontSize: 12 }} onClick={onViewAll}>
-          View all <span style={{ fontSize: 14, lineHeight: 1 }}>→</span>
-        </button>
+        <div style={{ display: "flex", gap: 6 }}>
+          {onAddCustom && (
+            <button className="btn" style={{ padding: "5px 10px", fontSize: 12 }} onClick={onAddCustom}>
+              ＋ Custom problem
+            </button>
+          )}
+          <button className="btn" style={{ padding: "5px 10px", fontSize: 12 }} onClick={onViewAll}>
+            View all <span style={{ fontSize: 14, lineHeight: 1 }}>→</span>
+          </button>
+        </div>
       </div>
       <div style={{ display: "flex", flexDirection: "column" }}>
         {problems.map((p, i) => (
@@ -665,7 +673,9 @@ function RecentList({ problems, allTagOptions, onOpen, onViewAll, onSaveTags }) 
             <DiffBadge rating={p.rating} size="sm" />
             <div style={{ minWidth: 0 }}>
               <div style={{ minWidth: 0, fontSize: 13.5, fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  <span className="mono" style={{ color: "var(--text-faint)", fontSize: 12, marginRight: 7 }}>{p.contestId}{p.index}</span>
+                  {p.isCustom
+                    ? <span className="chip custom-badge" style={{ marginRight: 7 }}>custom</span>
+                    : <span className="mono" style={{ color: "var(--text-faint)", fontSize: 12, marginRight: 7 }}>{p.contestId}{p.index}</span>}
                   {p.name}
               </div>
               {notePlainText(p.note) && (
@@ -821,7 +831,7 @@ function RadarFilterDropdown({ allTopics, filter, onChange }) {
   );
 }
 
-function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {}, allTagOptions = [], radarFilter = null, radarShowRating = false, onSaveRadarFilter, onSaveRadarShowRating, onSaveTags, onOpenProblem, onGoAllSolved }) {
+function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {}, allTagOptions = [], radarFilter = null, radarShowRating = false, onSaveRadarFilter, onSaveRadarShowRating, onSaveTags, onOpenProblem, onGoAllSolved, onAddCustom }) {
   const [range, setRange] = React.useState(RANGES[4]); // All
 
   const allProblems = withTagOverrides(problems, tagOverrides);
@@ -962,7 +972,7 @@ function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {},
             </div>}
       </div>
 
-      <RecentList problems={recentList} allTagOptions={allTagOptions} onOpen={onOpenProblem} onViewAll={onGoAllSolved} onSaveTags={onSaveTags} />
+      <RecentList problems={recentList} allTagOptions={allTagOptions} onOpen={onOpenProblem} onViewAll={onGoAllSolved} onSaveTags={onSaveTags} onAddCustom={onAddCustom} />
     </div>
   );
 }
