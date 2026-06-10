@@ -140,6 +140,11 @@ const RECENT_CONTEST_SECONDS = Math.round(RECENT_CONTEST_YEARS * 365.25 * 24 * 6
 const THEME_CONFIDENCE_SOLVES = 5;
 const THEMECP_RANGE_BELOW = 700;
 const THEMECP_RANGE_ABOVE = 100;
+const PROBLEM_RANGE_MIN = 800;
+const PROBLEM_RANGE_MAX = 3500;
+const PROBLEM_RANGE_STEP = 100;
+const PICK_HISTORY_KEY = "cf-tracker:get-problem-history:v1";
+const PICK_HISTORY_LIMIT = 36;
 
 const RELATED_THEME_TAGS = {
   Graphs: ["graphs", "dfs and similar", "trees", "dsu", "shortest paths", "graph matchings"],
@@ -150,6 +155,185 @@ const GET_PROBLEM_SPECIALS = [
   { value: "__random__", label: "Random" },
 ];
 
+function roundRating(value) {
+  return Math.round(value / PROBLEM_RANGE_STEP) * PROBLEM_RANGE_STEP;
+}
+
+function clampRating(value) {
+  return Math.max(PROBLEM_RANGE_MIN, Math.min(PROBLEM_RANGE_MAX, roundRating(value)));
+}
+
+function defaultProblemRange(userRating) {
+  const base = userRating || 1200;
+  const lo = clampRating(Math.floor((base - THEMECP_RANGE_BELOW) / 100) * 100);
+  const hi = clampRating(Math.ceil((base + THEMECP_RANGE_ABOVE) / 100) * 100);
+  return [Math.min(lo, hi), Math.max(lo, hi)];
+}
+
+function weightedRandom(items, weightOf) {
+  const weights = items.map((item) => Math.max(0.01, weightOf(item)));
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  let cursor = Math.random() * total;
+  for (let i = 0; i < items.length; i += 1) {
+    cursor -= weights[i];
+    if (cursor <= 0) return items[i];
+  }
+  return items[items.length - 1];
+}
+
+function readPickHistory() {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(PICK_HISTORY_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberPick(problem) {
+  if (typeof window === "undefined" || !problem) return;
+  const entry = {
+    id: `${problem.contestId}${problem.index}`,
+    contestId: problem.contestId,
+    rating: problem.rating,
+    tags: problem.tags || [],
+    pickedAt: Date.now(),
+  };
+  const history = readPickHistory().filter((p) => p.id !== entry.id);
+  window.localStorage.setItem(PICK_HISTORY_KEY, JSON.stringify([entry, ...history].slice(0, PICK_HISTORY_LIMIT)));
+}
+
+function randomFrom(items) {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
+function diversePick(candidates, target, group) {
+  if (!candidates.length) return null;
+
+  const history = readPickHistory();
+  const recentIds = new Set(history.slice(0, 24).map((p) => p.id));
+  const recentContests = new Set(history.slice(0, 12).map((p) => p.contestId));
+  let pool = candidates;
+
+  const withoutRecentIds = pool.filter((p) => !recentIds.has(`${p.contestId}${p.index}`));
+  if (withoutRecentIds.length >= Math.min(12, pool.length * 0.35)) pool = withoutRecentIds;
+
+  const withoutRecentContests = pool.filter((p) => !recentContests.has(p.contestId));
+  if (withoutRecentContests.length >= Math.min(12, pool.length * 0.3)) pool = withoutRecentContests;
+
+  const byRating = new Map();
+  for (const p of pool) {
+    if (!byRating.has(p.rating)) byRating.set(p.rating, []);
+    byRating.get(p.rating).push(p);
+  }
+
+  const ratingBucket = weightedRandom([...byRating.entries()], ([rating]) => {
+    const distance = Math.abs(rating - target);
+    return 1 / (1 + distance / 250);
+  });
+
+  const rawTagBucket = new Map();
+  for (const p of ratingBucket[1]) {
+    const variedTag = (p.tags || []).find((tag) => (TAG_GROUPS[tag] || tag) !== group) || p.tags?.[0] || "untagged";
+    if (!rawTagBucket.has(variedTag)) rawTagBucket.set(variedTag, []);
+    rawTagBucket.get(variedTag).push(p);
+  }
+
+  return randomFrom(randomFrom([...rawTagBucket.values()]));
+}
+
+function EloRangeSlider({ value, onChange, recommended }) {
+  const [lo, hi] = value;
+  const [draftLo, setDraftLo] = React.useState(String(lo));
+  const [draftHi, setDraftHi] = React.useState(String(hi));
+  const minGap = PROBLEM_RANGE_STEP;
+  const recommendedPct = ((recommended - PROBLEM_RANGE_MIN) / (PROBLEM_RANGE_MAX - PROBLEM_RANGE_MIN)) * 100;
+  const loPct = ((lo - PROBLEM_RANGE_MIN) / (PROBLEM_RANGE_MAX - PROBLEM_RANGE_MIN)) * 100;
+  const hiPct = ((hi - PROBLEM_RANGE_MIN) / (PROBLEM_RANGE_MAX - PROBLEM_RANGE_MIN)) * 100;
+
+  function setLow(raw) {
+    const next = clampRating(Number(raw));
+    const safe = Math.min(next, hi - minGap);
+    setDraftLo(String(safe));
+    onChange([safe, hi]);
+  }
+
+  function setHigh(raw) {
+    const next = clampRating(Number(raw));
+    const safe = Math.max(next, lo + minGap);
+    setDraftHi(String(safe));
+    onChange([lo, safe]);
+  }
+
+  function commitLow() {
+    if (!draftLo.trim()) {
+      setDraftLo(String(lo));
+      return;
+    }
+    setLow(draftLo);
+  }
+
+  function commitHigh() {
+    if (!draftHi.trim()) {
+      setDraftHi(String(hi));
+      return;
+    }
+    setHigh(draftHi);
+  }
+
+  function onInputKeyDown(e, commit) {
+    if (e.key !== "Enter") return;
+    e.currentTarget.blur();
+    commit();
+  }
+
+  return (
+    <div className="elo-range">
+      <div className="elo-range-head">
+        <span className="label">Elo range</span>
+        <div className="elo-range-values">
+          <input
+            type="number"
+            min={PROBLEM_RANGE_MIN}
+            max={hi - minGap}
+            step={PROBLEM_RANGE_STEP}
+            value={draftLo}
+            onChange={(e) => setDraftLo(e.target.value)}
+            onBlur={commitLow}
+            onKeyDown={(e) => onInputKeyDown(e, commitLow)}
+            aria-label="Minimum problem Elo"
+          />
+          <span aria-hidden="true">-</span>
+          <input
+            type="number"
+            min={lo + minGap}
+            max={PROBLEM_RANGE_MAX}
+            step={PROBLEM_RANGE_STEP}
+            value={draftHi}
+            onChange={(e) => setDraftHi(e.target.value)}
+            onBlur={commitHigh}
+            onKeyDown={(e) => onInputKeyDown(e, commitHigh)}
+            aria-label="Maximum problem Elo"
+          />
+        </div>
+      </div>
+      <div className="elo-range-track" style={{ "--lo": `${loPct}%`, "--hi": `${hiPct}%`, "--rec": `${recommendedPct}%` }}>
+        <input type="range" min={PROBLEM_RANGE_MIN} max={PROBLEM_RANGE_MAX} step={PROBLEM_RANGE_STEP}
+          value={lo} onChange={(e) => setLow(e.target.value)} aria-label="Minimum problem Elo" />
+        <input type="range" min={PROBLEM_RANGE_MIN} max={PROBLEM_RANGE_MAX} step={PROBLEM_RANGE_STEP}
+          value={hi} onChange={(e) => setHigh(e.target.value)} aria-label="Maximum problem Elo" />
+        <div className="elo-range-line" aria-hidden="true" />
+        <div className="elo-range-fill" aria-hidden="true" />
+        <div className="elo-range-recommended" aria-hidden="true">
+          <span className="elo-range-dot" />
+          <span className="elo-range-rec-label">recommended <span className="mono">{recommended}</span></span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ThemeCP-style picker: a random rated problem near your level for a chosen theme.
 function GetProblem({ problems, topics, weakestName, userRating }) {
   const [value, setValue] = React.useState("__weak__");
@@ -158,6 +342,7 @@ function GetProblem({ problems, topics, weakestName, userRating }) {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState(null);
   const [result, setResult] = React.useState(null);
+  const [ratingRange, setRatingRange] = React.useState(() => defaultProblemRange(userRating));
   const pickerRef = React.useRef(null);
 
   const topicByName = React.useMemo(() => {
@@ -172,6 +357,14 @@ function GetProblem({ problems, topics, weakestName, userRating }) {
   const visibleOptions = optionQuery
     ? options.filter((o) => o.label.toLowerCase().includes(optionQuery))
     : options;
+  const selectedGroup = value === "__weak__" ? weakestName || null : value !== "__random__" ? value : null;
+  const selectedTheme = selectedGroup ? topicByName[selectedGroup] : null;
+  const overallRating = userRating || 1200;
+  const confidence = selectedTheme ? Math.min(1, (selectedTheme.count || 0) / THEME_CONFIDENCE_SOLVES) : 0;
+  const blendedLevel = selectedTheme?.score
+    ? overallRating * (1 - confidence) + selectedTheme.score * confidence
+    : overallRating;
+  const recommendedRating = clampRating(blendedLevel);
 
   function closePicker() {
     setOpen(false);
@@ -205,25 +398,15 @@ function GetProblem({ problems, topics, weakestName, userRating }) {
     try {
       const all = await getProblemset();
       const solvedIds = new Set(problems.map((p) => `${p.contestId}${p.index}`));
-      const overallRating = userRating || 1200;
-      let group = null;
-      if (value === "__weak__") group = weakestName || null;
-      else if (value !== "__random__") group = value;
-
-      const theme = group ? topicByName[group] : null;
-      const confidence = theme ? Math.min(1, (theme.count || 0) / THEME_CONFIDENCE_SOLVES) : 0;
-      const blendedLevel = theme?.score
-        ? overallRating * (1 - confidence) + theme.score * confidence
-        : overallRating;
-      const target = Math.round(blendedLevel / 100) * 100;
-      const rangeLo = Math.max(800, Math.floor((overallRating - THEMECP_RANGE_BELOW) / 100) * 100);
-      const rangeHi = Math.max(rangeLo, Math.ceil((overallRating + THEMECP_RANGE_ABOVE) / 100) * 100);
+      const group = selectedGroup;
+      const target = recommendedRating;
+      const [rangeLo, rangeHi] = ratingRange;
       const relatedTags = group ? new Set(RELATED_THEME_TAGS[group] || []) : null;
       const inGroup = (p) => !group || p.tags.some((rt) => (TAG_GROUPS[rt] || rt) === group || relatedTags?.has(rt));
       const unsolved = (p) => !solvedIds.has(`${p.contestId}${p.index}`);
       const recentCutoff = Math.floor(Date.now() / 1000) - RECENT_CONTEST_SECONDS;
 
-      // Search inside the ThemeCP-style expected range, biased toward the theme-adjusted level.
+      // Search inside the selected range, then avoid recent local suggestions before sampling.
       let pick = null;
       for (const radius of [100, 200, 350, Number.POSITIVE_INFINITY]) {
         const lo = Number.isFinite(radius) ? Math.max(rangeLo, target - radius) : rangeLo;
@@ -236,10 +419,13 @@ function GetProblem({ problems, topics, weakestName, userRating }) {
           p.contestStartTimeSeconds &&
           p.contestStartTimeSeconds >= recentCutoff
         );
-        if (cands.length) { pick = cands[Math.floor(Math.random() * cands.length)]; break; }
+        if (cands.length) { pick = diversePick(cands, target, group); break; }
       }
       if (!pick) { setResult(null); setError(`No recent rated problems found from the last ${RECENT_CONTEST_YEARS} years — try another theme.`); }
-      else setResult(pick);
+      else {
+        rememberPick(pick);
+        setResult(pick);
+      }
     } catch (e) {
       setError(e.message || "Could not reach Codeforces.");
     } finally {
@@ -314,6 +500,8 @@ function GetProblem({ problems, topics, weakestName, userRating }) {
           {loading ? "…" : "Get →"}
         </button>
       </div>
+
+      <EloRangeSlider value={ratingRange} onChange={setRatingRange} recommended={recommendedRating} />
 
       {error && <div style={{ marginTop: 14, fontSize: 12.5, color: "var(--bad)" }}>{error}</div>}
 
@@ -764,7 +952,7 @@ function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {},
                 <div className="card-head"><span className="card-title">Weak points</span></div>
                 <Empty msg="Nothing solved in this period." />
               </div>}
-          <GetProblem problems={allProblems} topics={radarUniverse} weakestName={weakestName} userRating={user?.rating} />
+          <GetProblem key={`problem-picker-${user?.rating || 1200}`} problems={allProblems} topics={radarUniverse} weakestName={weakestName} userRating={user?.rating} />
         </div>
         {hasData
           ? <EloByTopic stats={radarUniverse} />

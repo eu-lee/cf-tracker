@@ -347,6 +347,183 @@ body {
   color: var(--text-faint);
   font-size: 12.5px;
 }
+
+.elo-range {
+  margin-top: 14px;
+  padding: 12px 11px 8px;
+  border: 1px solid var(--border-2);
+  border-radius: 9px;
+  background: var(--panel-2);
+}
+
+.elo-range-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 9px;
+}
+
+.elo-range-values {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.elo-range-values input {
+  width: 55px;
+  height: 26px;
+  padding: 0 5px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: center;
+  outline: none;
+}
+
+.elo-range-values input:hover {
+  border-color: var(--border);
+  background: var(--bg);
+}
+
+.elo-range-values input:focus {
+  border-color: var(--accent);
+  background: var(--bg);
+}
+
+.elo-range-values input::-webkit-outer-spin-button,
+.elo-range-values input::-webkit-inner-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.elo-range-values input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+.elo-range-track {
+  position: relative;
+  height: 42px;
+}
+
+.elo-range-line,
+.elo-range-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 12px;
+  height: 6px;
+  border-radius: 99px;
+  pointer-events: none;
+}
+
+.elo-range-line {
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.elo-range-fill {
+  left: var(--lo);
+  right: calc(100% - var(--hi));
+  background: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 72%, transparent);
+}
+
+.elo-range-track input[type="range"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 30px;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.elo-range-track input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  background: transparent;
+}
+
+.elo-range-track input[type="range"]::-moz-range-track {
+  height: 6px;
+  background: transparent;
+}
+
+.elo-range-track input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 17px;
+  height: 17px;
+  margin-top: -5.5px;
+  border-radius: 50%;
+  border: 2px solid var(--panel);
+  background: var(--text);
+  box-shadow: 0 1px 6px rgba(0,0,0,.24);
+  cursor: grab;
+  pointer-events: auto;
+}
+
+.elo-range-track input[type="range"]::-moz-range-thumb {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 2px solid var(--panel);
+  background: var(--text);
+  box-shadow: 0 1px 6px rgba(0,0,0,.24);
+  cursor: grab;
+  pointer-events: auto;
+}
+
+.elo-range-recommended {
+  position: absolute;
+  left: var(--rec);
+  top: 7px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.elo-range-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 1px solid var(--panel);
+  box-shadow: inset 0 0 0 5px var(--cf-orange), 0 1px 6px rgba(0,0,0,.24);
+}
+
+.elo-range-rec-label {
+  max-width: 116px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  border: 1px solid var(--border-2);
+  color: var(--text-faint);
+  font-size: 10.5px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  box-shadow: var(--shadow);
+}
+
+.elo-range-rec-label .mono {
+  color: var(--text);
+  font-size: 10.5px;
+  font-weight: 700;
+}
 .prow { transition: background var(--t-fast); }
 .prow:hover { background: var(--panel-hover); }
 thead .label { white-space: nowrap; }
