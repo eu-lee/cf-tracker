@@ -356,15 +356,21 @@ function EditableTagList({ problem, onSaveTags }) {
 
 function TagPicker({ problem, allTagOptions, onSaveTags }) {
   const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
   const rootRef = React.useRef(null);
+
+  function closeMenu() {
+    setOpen(false);
+    setQuery("");
+  }
 
   React.useEffect(() => {
     if (!open) return;
     function onPointerDown(e) {
-      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+      if (rootRef.current && !rootRef.current.contains(e.target)) closeMenu();
     }
     function onKeyDown(e) {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") closeMenu();
     }
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
@@ -376,10 +382,24 @@ function TagPicker({ problem, allTagOptions, onSaveTags }) {
 
   function addTag(tag) {
     onSaveTags(problem.id, [...problem.tags, tag]);
-    setOpen(false);
+    closeMenu();
   }
 
-  const availableTags = (allTagOptions ?? []).filter((t) => !problem.tags.includes(t));
+  const available = (allTagOptions ?? []).filter((t) => !problem.tags.includes(t));
+  const q = query.trim().toLowerCase();
+  const availableTags = q
+    ? available.filter((t) => ((TAG_GROUPS[t] || t).toLowerCase().includes(q) || t.toLowerCase().includes(q)))
+    : available;
+  const customTag = query.trim();
+  const showCustom = customTag && !problem.tags.includes(customTag)
+    && !available.some((t) => (TAG_GROUPS[t] || t).toLowerCase() === q || t.toLowerCase() === q);
+
+  function onSearchKeyDown(e) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (availableTags.length > 0) addTag(availableTags[0]);
+    else if (showCustom) addTag(customTag);
+  }
 
   return (
     <div ref={rootRef} onClick={(e) => e.stopPropagation()} style={{ position: "relative" }}>
@@ -389,17 +409,36 @@ function TagPicker({ problem, allTagOptions, onSaveTags }) {
         aria-label="Add tag"
         aria-haspopup="listbox"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => open ? closeMenu() : setOpen(true)}
       >+</button>
       {open && (
         <div className="recent-tag-menu" role="listbox" aria-label="Codeforces tags">
-          {availableTags.length > 0 ? availableTags.map((t) => (
-            <button key={t} type="button" className="recent-tag-menu-item" onClick={() => addTag(t)}>
-              {TAG_GROUPS[t] || t}
-            </button>
-          )) : (
-            <div className="recent-tag-menu-empty">No more tags</div>
-          )}
+          <div className="recent-tag-menu-search">
+            <input
+              autoFocus
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={onSearchKeyDown}
+              placeholder="Search tags…"
+              aria-label="Search tags"
+            />
+          </div>
+          <div className="recent-tag-menu-list">
+            {availableTags.map((t) => (
+              <button key={t} type="button" className="recent-tag-menu-item" onClick={() => addTag(t)}>
+                {TAG_GROUPS[t] || t}
+              </button>
+            ))}
+            {showCustom && (
+              <button type="button" className="recent-tag-menu-item" onClick={() => addTag(customTag)}>
+                + Add “{customTag}”
+              </button>
+            )}
+            {availableTags.length === 0 && !showCustom && (
+              <div className="recent-tag-menu-empty">{q ? "No matching tags" : "No more tags"}</div>
+            )}
+          </div>
         </div>
       )}
     </div>
