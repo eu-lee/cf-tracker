@@ -168,7 +168,7 @@ export function SkillRadar({ topics, lo = 800, hi = 2000, rating = 0, showRating
   // solved topics sit at their skill radius; unsolved collapse to the exact
   // center so a wall of empty axes doesn't bunch into a ring of dots
   const radiusForScore = (score) => Math.max(0, Math.min(1, (score - lo) / range));
-  const radiusOf = (t) => (t.count ? Math.max(0.05, radiusForScore(t.score || 0)) : 0);
+  const radiusOf = (t) => (t.ratedCount ? Math.max(0.05, radiusForScore(t.score || 0)) : 0);
   const poly = topics.map((t, i) => pt(i, radiusOf(t)).map((v) => v.toFixed(1)).join(",")).join(" ");
   const ratingRadius = radiusForScore(rating || 0);
   const ratingPoly = topics.map((_, i) => pt(i, ratingRadius).map((v) => v.toFixed(1)).join(",")).join(" ");
@@ -203,7 +203,7 @@ export function SkillRadar({ topics, lo = 800, hi = 2000, rating = 0, showRating
       <polygon points={poly} fill="var(--accent)" fillOpacity="0.16" stroke="var(--accent)" strokeWidth="2" strokeLinejoin="round" />
       {/* vertices — none for unsolved topics (they'd pile up at the center) */}
       {topics.map((t, i) => {
-        if (!t.count) return null;
+        if (!t.ratedCount) return null;
         const [px, py] = pt(i, radiusOf(t));
         return <circle key={i} cx={px} cy={py} r={hover === i ? 6 : 3.8} fill="var(--panel)"
           stroke="var(--accent)" strokeWidth="2"
@@ -225,7 +225,7 @@ export function SkillRadar({ topics, lo = 800, hi = 2000, rating = 0, showRating
               fontWeight={hover === i ? 700 : 500}
               fill={hover === i ? "var(--text)" : "var(--text-dim)"}>{t.name}</text>
             <text x={lx} y={ly + 15} textAnchor={anchor} dominantBaseline="middle" fontSize="11"
-              fontFamily="var(--font-mono)" fill="var(--text-faint)">{t.score || "—"}</text>
+              fontFamily="var(--font-mono)" fill="var(--text-faint)">{t.ratedCount ? t.score : "—"}</text>
           </g>
         );
       })}

@@ -49,8 +49,13 @@ import { TAG_GROUPS } from "./data";
     return probs.filter((p) => dateMs(p.solvedAt) >= cutoff);
   }
 
+  function ratedValue(problem) {
+    const rating = Number(problem?.rating);
+    return Number.isFinite(rating) && rating > 0 ? rating : null;
+  }
+
   function difficultyDistribution(probs = []) {
-    const ratings = probs.map((p) => p.rating).filter(Boolean);
+    const ratings = probs.map(ratedValue).filter((rating) => rating != null);
     if (!ratings.length) return [];
     const maxR = Math.max(...ratings);
     // extend top bucket so maxR always falls inside a full 200-pt range
@@ -96,18 +101,22 @@ import { TAG_GROUPS } from "./data";
     for (const p of probs) {
       for (const t of p.tags) {
         const name = TAG_GROUPS[t] || t;
-        if (!map[name]) map[name] = { name, raw: t, count: 0, max: 0, sum: 0, latest: "", ratings: [] };
+        if (!map[name]) map[name] = { name, raw: t, count: 0, ratedCount: 0, max: 0, sum: 0, latest: "", ratings: [] };
         const m = map[name];
+        const rating = ratedValue(p);
         m.count++;
-        m.max = Math.max(m.max, p.rating);
-        m.sum += p.rating;
-        if (p.rating) m.ratings.push(p.rating);
+        if (rating != null) {
+          m.ratedCount++;
+          m.max = Math.max(m.max, rating);
+          m.sum += rating;
+          m.ratings.push(rating);
+        }
         if (p.solvedAt > m.latest) m.latest = p.solvedAt;
       }
     }
     return Object.values(map).map((m) => ({
       ...m,
-      avg: Math.round(m.sum / m.count),
+      avg: m.ratedCount ? Math.round(m.sum / m.ratedCount) : 0,
       score: weightedScore(m.ratings),
     }));
   }
@@ -115,21 +124,24 @@ import { TAG_GROUPS } from "./data";
   function radarTopics(probs = []) {
     const stats = topicStats(probs);
     const lo = 800;
-    const maxRating = probs.reduce((m, p) => (p.rating ? Math.max(m, p.rating) : m), lo + 1);
+    const maxRating = probs.reduce((m, p) => {
+      const rating = ratedValue(p);
+      return rating != null ? Math.max(m, rating) : m;
+    }, lo + 1);
     // +250 headroom so the strongest topic doesn't peg the outer ring
     const hi = maxRating + 250;
     const range = hi - lo;
     const topics = stats.map((s) => {
-      const skill = s.count ? Math.max(0.05, Math.min(1, (s.score - lo) / range)) : 0;
-      return { name: s.name, count: s.count, max: s.max || 0, avg: s.avg || 0, score: s.score || 0, skill };
+      const skill = s.ratedCount ? Math.max(0.05, Math.min(1, (s.score - lo) / range)) : 0;
+      return { name: s.name, count: s.count, ratedCount: s.ratedCount || 0, max: s.max || 0, avg: s.avg || 0, score: s.score || 0, skill };
     });
     return { topics, lo, hi };
   }
 
   // weakest topics: lowest weighted topic score (penalize few solves slightly)
   function weakest(n = 4, probs = []) {
-    const stats = topicStats(probs).filter((s) => s.count >= 1);
-    const scored = stats.map((s) => ({ ...s, rank: s.score - Math.min(s.count, 5) * 12 }));
+    const stats = topicStats(probs).filter((s) => s.ratedCount >= 1);
+    const scored = stats.map((s) => ({ ...s, rank: s.score - Math.min(s.ratedCount, 5) * 12 }));
     scored.sort((a, b) => a.rank - b.rank);
     return scored.slice(0, n);
   }
@@ -151,10 +163,11 @@ import { TAG_GROUPS } from "./data";
 
   function totals(probs = []) {
     const solved = probs.length;
+    const ratings = probs.map(ratedValue).filter((rating) => rating != null);
     const tagSet = new Set();
     probs.forEach((p) => p.tags.forEach((t) => tagSet.add(t)));
-    const avgRating = solved ? Math.round(probs.reduce((s, p) => s + p.rating, 0) / solved) : 0;
-    const maxSolved = solved ? Math.max(...probs.map((p) => p.rating)) : 0;
+    const avgRating = ratings.length ? Math.round(ratings.reduce((s, rating) => s + rating, 0) / ratings.length) : 0;
+    const maxSolved = ratings.length ? Math.max(...ratings) : 0;
     const avgAttempts = solved ? (probs.reduce((s, p) => s + p.attempts, 0) / solved) : 0;
     const firstTry = probs.filter((p) => p.attempts === 1).length;
     return { solved, topics: tagSet.size, avgRating, maxSolved, avgAttempts, firstTry };

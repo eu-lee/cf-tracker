@@ -48,7 +48,9 @@ function ProfileHero({ user, problems }) {
 }
 
 function EloByTopic({ stats }) {
-  const sorted = stats.slice().sort((a, b) => b.score - a.score || b.count - a.count || a.name.localeCompare(b.name));
+  const sorted = stats
+    .filter((s) => s.ratedCount > 0)
+    .sort((a, b) => b.score - a.score || b.ratedCount - a.ratedCount || a.name.localeCompare(b.name));
   const lo = 1100, hi = 1950;
   return (
     <div className="panel animate-in" style={{ padding: 20 }}>
@@ -56,7 +58,7 @@ function EloByTopic({ stats }) {
         <span className="card-title">Elo by topic</span>
         <span className="label">estimated level</span>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 11, maxHeight: 390, overflowY: "auto", paddingRight: 4 }}>
+      {sorted.length === 0 ? <Empty msg="No rated problems in this period." /> : <div style={{ display: "flex", flexDirection: "column", gap: 11, maxHeight: 390, overflowY: "auto", paddingRight: 4 }}>
         {sorted.map((s) => {
           const pct = Math.max(6, Math.min(100, ((s.score - lo) / (hi - lo)) * 100));
           const c = diffColor(s.score);
@@ -67,11 +69,11 @@ function EloByTopic({ stats }) {
                 <div style={{ width: pct + "%", height: "100%", background: c, borderRadius: 99,
                   transition: "width .6s cubic-bezier(.16,1,.3,1)" }} />
               </div>
-              <span className="mono" style={{ fontSize: 12.5, fontWeight: 600, color: c, textAlign: "right", whiteSpace: "nowrap" }}>{s.score} <span style={{ color: "var(--text-faint)", fontWeight: 500 }}>({s.count})</span></span>
+              <span className="mono" style={{ fontSize: 12.5, fontWeight: 600, color: c, textAlign: "right", whiteSpace: "nowrap" }}>{s.score} <span style={{ color: "var(--text-faint)", fontWeight: 500 }}>({s.ratedCount})</span></span>
             </div>
           );
         })}
-      </div>
+      </div>}
     </div>
   );
 }
@@ -845,7 +847,7 @@ function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {},
     const names = [...new Set(Object.values(TAG_GROUPS))];
     for (const t of radarTopicList) if (!names.includes(t.name)) names.push(t.name);
     return names
-      .map((name) => byName.get(name) || { name, count: 0, max: 0, avg: 0, score: 0, skill: 0 })
+      .map((name) => byName.get(name) || { name, count: 0, ratedCount: 0, max: 0, avg: 0, score: 0, skill: 0 })
       .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   })();
   // radarFilter: null = solved topics, "all" = every topic, array = custom subset
@@ -857,7 +859,7 @@ function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {},
   const diff = difficultyDistribution(windowed);
   const types = typeDistribution(7, windowed);
   // weak-points list: solved topics weakest-first, then unsolved topics
-  const weakSolved = radarUniverse.filter((t) => t.count > 0).slice().sort((a, b) => a.score - b.score);
+  const weakSolved = radarUniverse.filter((t) => t.ratedCount > 0).slice().sort((a, b) => a.score - b.score);
   const unsolvedTopics = radarUniverse.filter((t) => t.count === 0);
   const weakList = [...weakSolved, ...unsolvedTopics];
   const weakestName = weakSolved[0]?.name ?? null;
