@@ -45,6 +45,85 @@ export function richTextPlainText(value) {
   return "";
 }
 
+function markMarkdown(mark, text) {
+  switch (mark.type.name) {
+    case "bold":
+      return `**${text}**`;
+    case "italic":
+      return `*${text}*`;
+    case "code":
+      return `\`${text}\``;
+    case "link":
+      return mark.attrs?.href ? `[${text}](${mark.attrs.href})` : text;
+    default:
+      return text;
+  }
+}
+
+function textWithMarks(node) {
+  return (node.marks || []).reduce((text, mark) => markMarkdown(mark, text), node.text || "");
+}
+
+function nodeChildrenToMarkdown(node, context = {}) {
+  return (node.content?.content || []).map((child) => nodeToMarkdown(child, context)).join("");
+}
+
+function listItemToMarkdown(node, context, index = 0) {
+  const marker = context.ordered ? `${context.start + index}. ` : "- ";
+  const body = nodeChildrenToMarkdown(node, { ...context, inListItem: true }).trimEnd();
+  const lines = body.split("\n");
+  return lines.map((line, lineIndex) => lineIndex === 0 ? `${marker}${line}` : `  ${line}`).join("\n");
+}
+
+function nodeToMarkdown(node, context = {}) {
+  if (node.isText) return textWithMarks(node);
+
+  switch (node.type.name) {
+    case "doc":
+      return nodeChildrenToMarkdown(node, context).trim();
+    case "paragraph":
+      return nodeChildrenToMarkdown(node, context) + (context.inListItem ? "" : "\n\n");
+    case "heading":
+      return `${"#".repeat(node.attrs?.level || 2)} ${nodeChildrenToMarkdown(node, context)}\n\n`;
+    case "bulletList":
+      return (node.content?.content || []).map((child, index) => listItemToMarkdown(child, { ordered: false }, index)).join("\n") + "\n\n";
+    case "orderedList": {
+      const start = node.attrs?.start || 1;
+      return (node.content?.content || []).map((child, index) => listItemToMarkdown(child, { ordered: true, start }, index)).join("\n") + "\n\n";
+    }
+    case "listItem":
+      return listItemToMarkdown(node, context);
+    case "blockquote":
+      return nodeChildrenToMarkdown(node, context).trim().split("\n").map((line) => `> ${line}`).join("\n") + "\n\n";
+    case "codeBlock":
+      return `\`\`\`\n${node.textContent || ""}\n\`\`\`\n\n`;
+    case "hardBreak":
+      return "\n";
+    case "inlineMath":
+      return `$${node.attrs?.latex || ""}$`;
+    case "blockMath":
+      return `$$\n${node.attrs?.latex || ""}\n$$\n\n`;
+    case "problemImage":
+      return node.attrs?.path ? `![${node.attrs.alt || "problem screenshot"}](${node.attrs.path})\n\n` : "";
+    default:
+      return nodeChildrenToMarkdown(node, context);
+  }
+}
+
+function fragmentToMarkdown(fragment) {
+  return (fragment?.content || []).map((node) => nodeToMarkdown(node)).join("").trimEnd();
+}
+
+function copySelectionAsMarkdown(view, event) {
+  if (view.state.selection.empty) return false;
+  const markdown = fragmentToMarkdown(view.state.selection.content().content);
+  if (!markdown) return false;
+  event.clipboardData?.setData("text/plain", markdown);
+  event.clipboardData?.setData("text/markdown", markdown);
+  event.preventDefault();
+  return true;
+}
+
 export function richTextIsEmpty(value) {
   return richTextPlainText(value).trim() === "" && !richTextImagePaths(value).length;
 }
@@ -329,6 +408,9 @@ export default function ProblemNoteEditor({
         "aria-label": ariaLabel,
         style: minHeight ? `min-height: ${minHeight}px` : undefined,
       },
+      handleDOMEvents: {
+        copy: copySelectionAsMarkdown,
+      },
       handlePaste(view, event) {
         if (!enableImages || !onUploadImage) return false;
         const files = imageFilesFrom(event.clipboardData?.files);
@@ -524,6 +606,9 @@ export function ProblemRichTextViewer({ value, emptyText = "No description." }) 
       attributes: {
         class: "problem-note-editor problem-rich-viewer",
         "aria-label": "Problem details",
+      },
+      handleDOMEvents: {
+        copy: copySelectionAsMarkdown,
       },
     },
   });
