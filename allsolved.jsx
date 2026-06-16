@@ -195,6 +195,21 @@ function ProblemWindow({ problem, notes, tagOverrides = {}, allTagOptions, onClo
   const isCustom = Boolean(problem.isCustom);
   const [detailsOpen, setDetailsOpen] = React.useState(false);
 
+  React.useEffect(() => {
+    const { body } = document;
+    const prevOverflow = body.style.overflow;
+    const prevPaddingRight = body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+
+    body.style.overflow = "hidden";
+    if (scrollbarWidth > 0) body.style.paddingRight = `${scrollbarWidth}px`;
+
+    return () => {
+      body.style.overflow = prevOverflow;
+      body.style.paddingRight = prevPaddingRight;
+    };
+  }, []);
+
   function handleDelete() {
     if (window.confirm("Delete this custom problem? This also removes its screenshots.")) {
       onDelete?.(problem.id);
