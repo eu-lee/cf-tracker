@@ -293,20 +293,24 @@ function WeakTopics({ stats }) {
 
 function SkillByTopic({ topics, allTopics, filter, onFilterChange }) {
   return (
-    <div className="panel animate-in" style={{ padding: 20 }}>
+    <div className="panel animate-in leetcode-radar-panel">
       <div className="card-head">
         <span className="card-title">Skill by topic</span>
         <RadarFilterDropdown allTopics={allTopics} filter={filter} onChange={onFilterChange} />
       </div>
       {topics.length >= 3 ? (
-        <SkillRadar
-          topics={topics}
-          lo={1}
-          hi={3}
-          formatValue={(v) => Number(v).toFixed(2)}
-        />
+        <div className="leetcode-radar-shell">
+          <SkillRadar
+            topics={topics}
+            lo={1}
+            hi={3}
+            radius={360}
+            hideEmptyValueLabels
+            formatValue={(v) => Number(v).toFixed(2)}
+          />
+        </div>
       ) : (
-        <Empty msg="Sync at least 3 tagged topics to render the radar." h={300} />
+        <Empty msg="Sync at least 3 tagged topics to render the radar." h={520} />
       )}
     </div>
   );
@@ -421,22 +425,21 @@ function LeetcodePage({ problems = [], leetcodeUsername, tagOverrides = {}, onUs
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: 18 }} className="grid-2">
-        <SkillByTopic
-          topics={filteredRadarTopics}
-          allTopics={radarUniverse}
-          filter={radarFilter}
-          onFilterChange={setRadarFilter}
-        />
-        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-          <div className="panel animate-in" style={{ padding: 20 }}>
-            <div className="card-head"><span className="card-title">Solved by difficulty</span></div>
-            {windowed.length ? <DifficultyBars data={diff} /> : <Empty msg="No LeetCode solves in this range." />}
-          </div>
-          <div className="panel animate-in" style={{ padding: 20 }}>
-            <div className="card-head"><span className="card-title">Problem types</span></div>
-            {windowed.length && types.length ? <TypeDonut data={types} /> : <Empty msg="No tagged LeetCode solves in this range." />}
-          </div>
+      <SkillByTopic
+        topics={filteredRadarTopics}
+        allTopics={radarUniverse}
+        filter={radarFilter}
+        onFilterChange={setRadarFilter}
+      />
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }} className="grid-2">
+        <div className="panel animate-in" style={{ padding: 20 }}>
+          <div className="card-head"><span className="card-title">Solved by difficulty</span></div>
+          {windowed.length ? <DifficultyBars data={diff} /> : <Empty msg="No LeetCode solves in this range." />}
+        </div>
+        <div className="panel animate-in" style={{ padding: 20 }}>
+          <div className="card-head"><span className="card-title">Problem types</span></div>
+          {windowed.length && types.length ? <TypeDonut data={types} /> : <Empty msg="No tagged LeetCode solves in this range." />}
         </div>
       </div>
 

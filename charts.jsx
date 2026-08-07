@@ -156,14 +156,29 @@ export function Tooltip({ children, xPct }) {
 }
 
 /* ---------------- Skills radar ---------------- */
-export function SkillRadar({ topics, lo = 800, hi = 2000, rating = 0, showRating = false, formatValue = (v) => Math.round(v) }) {
+export function SkillRadar({
+  topics,
+  lo = 800,
+  hi = 2000,
+  rating = 0,
+  showRating = false,
+  formatValue = (v) => Math.round(v),
+  radius = 200,
+  hideEmptyValueLabels = false,
+  className,
+  style,
+}) {
   const [hover, setHover] = useState(null);
-  const size = 320, cx = size / 2, cy = size / 2 + 6, R = 200;
+  const size = 320, cx = size / 2, cy = size / 2 + 6, R = radius;
   const n = topics.length;
   const range = Math.max(1, hi - lo);
   const angle = (i) => (Math.PI * 2 * i) / n - Math.PI / 2;
   const pt = (i, r) => [cx + Math.cos(angle(i)) * R * r, cy + Math.sin(angle(i)) * R * r];
   const rings = [0.25, 0.5, 0.75, 1];
+  const labelR = R * 1.15;
+  const radarViewBox = radius === 200
+    ? "-172 -90 664 516"
+    : `${cx - labelR - 170} ${cy - labelR - 72} ${labelR * 2 + 340} ${labelR * 2 + 160}`;
 
   // solved topics sit at their skill radius; unsolved collapse to the exact
   // center so a wall of empty axes doesn't bunch into a ring of dots
@@ -182,7 +197,8 @@ export function SkillRadar({ topics, lo = 800, hi = 2000, rating = 0, showRating
   }));
 
   return (
-    <svg viewBox="-172 -90 664 516" style={{ width: "100%", height: "auto", display: "block", overflow: "visible" }}>
+    <svg viewBox={radarViewBox} className={className}
+      style={{ width: "100%", height: "auto", display: "block", overflow: "visible", ...style }}>
       {/* rings */}
       {rings.map((r, ri) => (
         <polygon key={ri}
@@ -219,13 +235,16 @@ export function SkillRadar({ topics, lo = 800, hi = 2000, rating = 0, showRating
         const [lx, ly] = pt(i, 1.15);
         const a = angle(i);
         const anchor = Math.abs(Math.cos(a)) < 0.25 ? "middle" : Math.cos(a) > 0 ? "start" : "end";
+        const showValue = t.ratedCount || !hideEmptyValueLabels;
         return (
           <g key={i} opacity={t.count ? 1 : 0.45}>
             <text x={lx} y={ly} textAnchor={anchor} dominantBaseline="middle" fontSize="12.5"
               fontWeight={hover === i ? 700 : 500}
               fill={hover === i ? "var(--text)" : "var(--text-dim)"}>{t.name}</text>
-            <text x={lx} y={ly + 15} textAnchor={anchor} dominantBaseline="middle" fontSize="11"
-              fontFamily="var(--font-mono)" fill="var(--text-faint)">{t.ratedCount ? formatValue(t.score) : "—"}</text>
+            {showValue && (
+              <text x={lx} y={ly + 15} textAnchor={anchor} dominantBaseline="middle" fontSize="11"
+                fontFamily="var(--font-mono)" fill="var(--text-faint)">{t.ratedCount ? formatValue(t.score) : "—"}</text>
+            )}
           </g>
         );
       })}

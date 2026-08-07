@@ -528,9 +528,26 @@ body {
 .prow:hover { background: var(--panel-hover); }
 thead .label { white-space: nowrap; }
 
+.leetcode-radar-panel {
+  padding: 24px 28px 28px;
+}
+
+.leetcode-radar-shell {
+  width: min(100%, 1320px);
+  margin: 0 auto;
+}
+
 /* responsive */
 @media (max-width: 860px) {
   .grid-2 { grid-template-columns: 1fr !important; }
+  .leetcode-radar-panel { padding: 20px; }
+  .leetcode-radar-shell {
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .leetcode-radar-shell svg {
+    min-width: 920px;
+  }
 }
 
 /* KaTeX sizing inside notes */
