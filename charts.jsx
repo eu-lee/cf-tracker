@@ -156,7 +156,7 @@ export function Tooltip({ children, xPct }) {
 }
 
 /* ---------------- Skills radar ---------------- */
-export function SkillRadar({ topics, lo = 800, hi = 2000, rating = 0, showRating = false }) {
+export function SkillRadar({ topics, lo = 800, hi = 2000, rating = 0, showRating = false, formatValue = (v) => Math.round(v) }) {
   const [hover, setHover] = useState(null);
   const size = 320, cx = size / 2, cy = size / 2 + 6, R = 200;
   const n = topics.length;
@@ -176,7 +176,7 @@ export function SkillRadar({ topics, lo = 800, hi = 2000, rating = 0, showRating
   // ring difficulty labels sit just right of the top spoke (cx, cy - R*frac)
   const ringLabels = rings.map((r) => ({
     r,
-    val: Math.round(lo + r * (hi - lo)),
+    val: formatValue(lo + r * (hi - lo)),
     x: cx + 5,
     y: cy - R * r,
   }));
@@ -225,7 +225,7 @@ export function SkillRadar({ topics, lo = 800, hi = 2000, rating = 0, showRating
               fontWeight={hover === i ? 700 : 500}
               fill={hover === i ? "var(--text)" : "var(--text-dim)"}>{t.name}</text>
             <text x={lx} y={ly + 15} textAnchor={anchor} dominantBaseline="middle" fontSize="11"
-              fontFamily="var(--font-mono)" fill="var(--text-faint)">{t.ratedCount ? t.score : "—"}</text>
+              fontFamily="var(--font-mono)" fill="var(--text-faint)">{t.ratedCount ? formatValue(t.score) : "—"}</text>
           </g>
         );
       })}

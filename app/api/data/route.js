@@ -19,6 +19,7 @@ export async function GET() {
   if (problemsErr) console.error("fetch problems:", problemsErr.message);
 
   const handle = profileData?.handle ?? null;
+  const leetcodeUsername = profileData?.leetcode_username ?? null;
 
   // Only expose CF stats once a handle is set and synced.
   const cfUser = handle
@@ -40,10 +41,13 @@ export async function GET() {
 
   const problems = (problemsData ?? []).map((p) => ({
     id: p.id,
+    platform: p.platform ?? (p.is_custom ? "custom" : "codeforces"),
     contestId: p.contest_id,
     index: p.problem_index,
     name: p.name,
     rating: p.rating,
+    lcDifficulty: p.lc_difficulty ?? null,
+    url: p.problem_url ?? null,
     tags: p.tags ?? [],
     solvedAt: p.solved_at,
     solvedAtTs: p.solved_at_ts,
@@ -55,5 +59,5 @@ export async function GET() {
     images: p.images ?? [],
   }));
 
-  return NextResponse.json({ handle, user: cfUser, ratingHistory, problems, radarFilter, radarShowRating });
+  return NextResponse.json({ handle, leetcodeUsername, user: cfUser, ratingHistory, problems, radarFilter, radarShowRating });
 }

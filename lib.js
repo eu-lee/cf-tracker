@@ -3,6 +3,20 @@
    ============================================================ */
 import { TAG_GROUPS } from "./data";
 
+  const PLATFORM_LABELS = {
+    codeforces: "Codeforces",
+    leetcode: "LeetCode",
+    custom: "Custom",
+  };
+
+  function platformOf(problem) {
+    return problem?.platform ?? (problem?.isCustom ? "custom" : "codeforces");
+  }
+
+  function platformLabel(platform) {
+    return PLATFORM_LABELS[platform] || platform;
+  }
+
   // Codeforces rank thresholds → css var color + label
   const RANKS = [
     { min: 2400, color: "var(--cf-red)",    name: "Grandmaster" },
@@ -82,6 +96,11 @@ import { TAG_GROUPS } from "./data";
     return probs.map((p) => ({ ...p, tags: effectiveTags(p, overrides) }));
   }
 
+  function problemsByPlatform(probs = [], platforms = []) {
+    const set = new Set(platforms);
+    return probs.filter((p) => set.has(platformOf(p)));
+  }
+
   // Geometric-decay weighted estimate of topic ability. Sort solves hardest-first
   // and weight each by r^i, so the hardest few dominate (no single max pegs it)
   // while volume of hard solves still counts — Codeforces-style aggregation.
@@ -96,11 +115,11 @@ import { TAG_GROUPS } from "./data";
   }
 
   // per-topic aggregate: count + avg + weighted score ("elo") + max rating
-  function topicStats(probs = []) {
+  function topicStats(probs = [], tagGroups = TAG_GROUPS) {
     const map = {};
     for (const p of probs) {
       for (const t of p.tags) {
-        const name = TAG_GROUPS[t] || t;
+        const name = tagGroups[t] || t;
         if (!map[name]) map[name] = { name, raw: t, count: 0, ratedCount: 0, max: 0, sum: 0, latest: "", ratings: [] };
         const m = map[name];
         const rating = ratedValue(p);
@@ -121,8 +140,8 @@ import { TAG_GROUPS } from "./data";
     }));
   }
 
-  function radarTopics(probs = []) {
-    const stats = topicStats(probs);
+  function radarTopics(probs = [], tagGroups = TAG_GROUPS) {
+    const stats = topicStats(probs, tagGroups);
     const lo = 800;
     const maxRating = probs.reduce((m, p) => {
       const rating = ratedValue(p);
@@ -139,16 +158,16 @@ import { TAG_GROUPS } from "./data";
   }
 
   // weakest topics: lowest weighted topic score (penalize few solves slightly)
-  function weakest(n = 4, probs = []) {
-    const stats = topicStats(probs).filter((s) => s.ratedCount >= 1);
+  function weakest(n = 4, probs = [], tagGroups = TAG_GROUPS) {
+    const stats = topicStats(probs, tagGroups).filter((s) => s.ratedCount >= 1);
     const scored = stats.map((s) => ({ ...s, rank: s.score - Math.min(s.ratedCount, 5) * 12 }));
     scored.sort((a, b) => a.rank - b.rank);
     return scored.slice(0, n);
   }
 
   // types of problems solved — top tags by count for the donut
-  function typeDistribution(n = 7, probs = []) {
-    const stats = topicStats(probs).slice();
+  function typeDistribution(n = 7, probs = [], tagGroups = TAG_GROUPS) {
+    const stats = topicStats(probs, tagGroups).slice();
     stats.sort((a, b) => b.count - a.count);
     const top = stats.slice(0, n);
     const restCount = stats.slice(n).reduce((s, x) => s + x.count, 0);
@@ -211,11 +230,15 @@ import { TAG_GROUPS } from "./data";
 
 export {
   DIFF_BUCKETS,
+  PLATFORM_LABELS,
   cssVar,
   diffColor,
   difficultyDistribution,
   fmtDate,
   effectiveTags,
+  platformLabel,
+  platformOf,
+  problemsByPlatform,
   radarTopics,
   rankOf,
   ratingInRange,

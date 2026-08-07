@@ -3,8 +3,8 @@
 import dynamic from "next/dynamic";
 import React from "react";
 import { TAG_GROUPS } from "./data.js";
-import { fmtDate, relDate, withTagOverrides } from "./lib.js";
-import { DiffBadge, Latex, Tag } from "./components.jsx";
+import { fmtDate, platformLabel, platformOf, relDate, withTagOverrides } from "./lib.js";
+import { DifficultyBadge, Latex, PlatformBadge, Tag } from "./components.jsx";
 import { createClient } from "./lib/supabase/client";
 import { richTextPlainText } from "./ProblemNoteEditor.jsx";
 
@@ -155,7 +155,7 @@ function TagEditor({ problemId, tags, allTagOptions, onSaveTags }) {
         </div>
       </div>
       {open && (
-        <div className="recent-tag-menu" role="listbox" aria-label="Codeforces tags" style={{ right: 0, left: "auto", top: "calc(100% + 6px)" }}>
+        <div className="recent-tag-menu" role="listbox" aria-label="Problem tags" style={{ right: 0, left: "auto", top: "calc(100% + 6px)" }}>
           <div className="recent-tag-menu-search">
             <input
               autoFocus
@@ -193,6 +193,7 @@ function ProblemWindow({ problem, notes, tagOverrides = {}, allTagOptions, onClo
   const effectiveProblem = { ...problem, tags: tagOverrides[problem.id] || problem.tags };
   const note = effNote(problem, notes);
   const isCustom = Boolean(problem.isCustom);
+  const platform = platformOf(problem);
   const [detailsOpen, setDetailsOpen] = React.useState(false);
 
   React.useEffect(() => {
@@ -231,7 +232,7 @@ function ProblemWindow({ problem, notes, tagOverrides = {}, allTagOptions, onClo
           display: "flex", alignItems: "center", gap: 12,
         }}>
           <span className="mono" style={{ fontSize: 12, color: "var(--text-faint)" }}>
-            {isCustom ? "custom problem" : `problem · ${problem.contestId}${problem.index}`}
+            {isCustom ? "custom problem" : platform === "leetcode" ? `leetcode · ${problem.index}` : `codeforces · ${problem.contestId}${problem.index}`}
           </span>
           {isCustom && (
             <>
@@ -250,17 +251,19 @@ function ProblemWindow({ problem, notes, tagOverrides = {}, allTagOptions, onClo
       }}>
         <div className="panel animate-in" style={{ padding: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <DiffBadge rating={effectiveProblem.rating} />
+            <DifficultyBadge problem={effectiveProblem} />
             {isCustom ? (
               <span className="chip" style={{ fontSize: 11 }}>custom</span>
             ) : (
               <a
-                href={`https://codeforces.com/problemset/problem/${problem.contestId}/${problem.index}`}
+                href={problem.url || (platform === "leetcode"
+                  ? `https://leetcode.com/problems/${problem.id.replace(/^lc-/, "")}/`
+                  : `https://codeforces.com/problemset/problem/${problem.contestId}/${problem.index}`)}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ marginLeft: "auto", fontSize: 12.5, color: "var(--accent-text)", textDecoration: "none" }}
               >
-                open on codeforces ↗
+                open on {platformLabel(platform).toLowerCase()} ↗
               </a>
             )}
           </div>
@@ -326,17 +329,23 @@ function ProblemWindow({ problem, notes, tagOverrides = {}, allTagOptions, onClo
 /* ---------------- table ---------------- */
 const COLS = [
   { key: "name", label: "Problem", sortable: true, align: "left" },
+  { key: "platform", label: "Source", sortable: true, align: "left" },
   { key: "rating", label: "Difficulty", sortable: true, align: "left" },
   { key: "tags", label: "Tags", sortable: false, align: "left" },
   { key: "attempts", label: "Tries", sortable: true, align: "right" },
   { key: "solvedAt", label: "Solved", sortable: true, align: "right" },
 ];
 
+function sourceGroupOf(problem) {
+  return platformOf(problem) === "leetcode" ? "leetcode" : "codeforces";
+}
+
 function AllSolved({ problems = [], notes, tagOverrides = {}, allTagOptions = [], onOpen, onAddCustom }) {
   const all = React.useMemo(() => withTagOverrides(problems, tagOverrides), [problems, tagOverrides]);
   const [q, setQ] = React.useState("");
   const [sort, setSort] = React.useState({ key: "solvedAt", dir: -1 });
   const [activeTags, setActiveTags] = React.useState([]);
+  const [platformFilter, setPlatformFilter] = React.useState("all");
 
   const allTags = React.useMemo(() => {
     const m = {};
@@ -344,14 +353,21 @@ function AllSolved({ problems = [], notes, tagOverrides = {}, allTagOptions = []
     return Object.entries(m).sort((a, b) => b[1] - a[1]).map(([t]) => t);
   }, [all]);
 
+  const platforms = React.useMemo(() => (
+    [...new Set(all.map((p) => sourceGroupOf(p)))].sort()
+  ), [all]);
+
   function toggleTag(t) {
     setActiveTags((prev) => prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]);
   }
 
   const rows = React.useMemo(() => {
     let r = all.filter((p) => {
-      const hay = (p.name + " " + p.contestId + p.index + " " + p.tags.join(" ") + " " + notePlainText(effNote(p, notes))).toLowerCase();
+      const platform = platformOf(p);
+      const source = sourceGroupOf(p);
+      const hay = (p.name + " " + platform + " " + source + " " + p.contestId + p.index + " " + p.tags.join(" ") + " " + notePlainText(effNote(p, notes))).toLowerCase();
       if (q && !hay.includes(q.toLowerCase())) return false;
+      if (platformFilter !== "all" && source !== platformFilter) return false;
       if (activeTags.length && !activeTags.every((t) => p.tags.includes(t))) return false;
       return true;
     });
@@ -359,12 +375,17 @@ function AllSolved({ problems = [], notes, tagOverrides = {}, allTagOptions = []
     r = r.slice().sort((a, b) => {
       let va = a[key], vb = b[key];
       if (key === "name") { va = a.name.toLowerCase(); vb = b.name.toLowerCase(); }
+      if (key === "platform") { va = sourceGroupOf(a); vb = sourceGroupOf(b); }
+      if (key === "rating") {
+        va = platformOf(a) === "leetcode" ? ({ Easy: 1, Medium: 2, Hard: 3 }[a.lcDifficulty] ?? 0) : (a.rating ?? 0);
+        vb = platformOf(b) === "leetcode" ? ({ Easy: 1, Medium: 2, Hard: 3 }[b.lcDifficulty] ?? 0) : (b.rating ?? 0);
+      }
       if (va < vb) return -1 * dir;
       if (va > vb) return 1 * dir;
       return 0;
     });
     return r;
-  }, [all, q, sort, activeTags, notes]);
+  }, [all, q, sort, activeTags, platformFilter, notes]);
 
   function setSortKey(key) {
     setSort((s) => s.key === key ? { key, dir: -s.dir } : { key, dir: key === "name" ? 1 : -1 });
@@ -385,6 +406,7 @@ function AllSolved({ problems = [], notes, tagOverrides = {}, allTagOptions = []
             <span className="label">Sort</span>
             <select className="btn" value={sort.key} onChange={(e) => setSortKey(e.target.value)} style={{ padding: "8px 11px" }}>
               <option value="solvedAt">Most recent</option>
+              <option value="platform">Source</option>
               <option value="rating">Difficulty</option>
               <option value="attempts">Attempts</option>
               <option value="name">Name</option>
@@ -398,6 +420,24 @@ function AllSolved({ problems = [], notes, tagOverrides = {}, allTagOptions = []
               ＋ Custom problem
             </button>
           )}
+        </div>
+        {/* platform filter */}
+        <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
+          <span className="label" style={{ marginRight: 2 }}>Source</span>
+          <button className="btn" onClick={() => setPlatformFilter("all")}
+            style={{
+              padding: "3px 10px", fontSize: 12,
+              borderColor: platformFilter === "all" ? "var(--accent)" : undefined,
+              color: platformFilter === "all" ? "var(--accent-text)" : undefined,
+            }}>All</button>
+          {platforms.map((platform) => (
+            <button key={platform} className="btn" onClick={() => setPlatformFilter(platform)}
+              style={{
+                padding: "3px 10px", fontSize: 12,
+                borderColor: platformFilter === platform ? "var(--accent)" : undefined,
+                color: platformFilter === platform ? "var(--accent-text)" : undefined,
+              }}>{platformLabel(platform)}</button>
+          ))}
         </div>
         {/* tag filter */}
         <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
@@ -422,14 +462,14 @@ function AllSolved({ problems = [], notes, tagOverrides = {}, allTagOptions = []
       <div style={{ padding: "0 4px" }}>
         <span style={{ fontSize: 13, color: "var(--text-dim)" }}>
           <span className="mono" style={{ fontWeight: 600, color: "var(--text)" }}>{rows.length}</span> problem{rows.length !== 1 ? "s" : ""}
-          {activeTags.length > 0 && <span style={{ color: "var(--text-faint)" }}> · filtered</span>}
+          {(activeTags.length > 0 || platformFilter !== "all") && <span style={{ color: "var(--text-faint)" }}> · filtered</span>}
         </span>
       </div>
 
       {/* table */}
       <div className="panel animate-in" style={{ padding: 0, overflow: "hidden" }}>
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 680 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
             <thead>
               <tr style={{ borderBottom: "1px solid var(--border)" }}>
                 {COLS.map((c) => (
@@ -454,7 +494,9 @@ function AllSolved({ problems = [], notes, tagOverrides = {}, allTagOptions = []
                       <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
                         {p.isCustom
                           ? <span className="chip custom-badge" style={{ flexShrink: 0 }}>custom</span>
-                          : <span className="mono" style={{ fontSize: 11.5, color: "var(--text-faint)", flexShrink: 0 }}>{p.contestId}{p.index}</span>}
+                          : platformOf(p) === "leetcode"
+                            ? <span className="mono" style={{ fontSize: 11.5, color: "var(--text-faint)", flexShrink: 0 }}>#{p.index}</span>
+                            : <span className="mono" style={{ fontSize: 11.5, color: "var(--text-faint)", flexShrink: 0 }}>{p.contestId}{p.index}</span>}
                         <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{p.name}</span>
                       </div>
                       {preview && (
@@ -465,7 +507,8 @@ function AllSolved({ problems = [], notes, tagOverrides = {}, allTagOptions = []
                         </div>
                       )}
                     </td>
-                    <td style={{ padding: "13px 16px" }}><DiffBadge rating={p.rating} size="sm" /></td>
+                    <td style={{ padding: "13px 16px" }}><PlatformBadge platform={sourceGroupOf(p)} /></td>
+                    <td style={{ padding: "13px 16px" }}><DifficultyBadge problem={p} size="sm" /></td>
                     <td style={{ padding: "13px 16px", minWidth: 280 }}>
                       <div style={{ display: "flex", gap: 5, flexWrap: "wrap", maxWidth: 560 }}>
                         {p.tags.map((t) => (

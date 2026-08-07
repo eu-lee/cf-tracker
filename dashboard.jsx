@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { TAG_GROUPS } from "./data.js";
+import { CF_TAG_GROUPS } from "./data.js";
 import {
   difficultyDistribution,
   diffColor,
@@ -237,7 +237,7 @@ function diversePick(candidates, target, group) {
 
   const rawTagBucket = new Map();
   for (const p of ratingBucket[1]) {
-    const variedTag = (p.tags || []).find((tag) => (TAG_GROUPS[tag] || tag) !== group) || p.tags?.[0] || "untagged";
+    const variedTag = (p.tags || []).find((tag) => (CF_TAG_GROUPS[tag] || tag) !== group) || p.tags?.[0] || "untagged";
     if (!rawTagBucket.has(variedTag)) rawTagBucket.set(variedTag, []);
     rawTagBucket.get(variedTag).push(p);
   }
@@ -404,7 +404,7 @@ function GetProblem({ problems, topics, weakestName, userRating }) {
       const target = recommendedRating;
       const [rangeLo, rangeHi] = ratingRange;
       const relatedTags = group ? new Set(RELATED_THEME_TAGS[group] || []) : null;
-      const inGroup = (p) => !group || p.tags.some((rt) => (TAG_GROUPS[rt] || rt) === group || relatedTags?.has(rt));
+      const inGroup = (p) => !group || p.tags.some((rt) => (CF_TAG_GROUPS[rt] || rt) === group || relatedTags?.has(rt));
       const unsolved = (p) => !solvedIds.has(`${p.contestId}${p.index}`);
       const recentCutoff = Math.floor(Date.now() / 1000) - RECENT_CONTEST_SECONDS;
 
@@ -537,8 +537,8 @@ function EditableTagList({ problem, onSaveTags }) {
     <div className="recent-tags">
       {problem.tags.map((t) => (
         <span key={t} className="recent-tag">
-          <span>{TAG_GROUPS[t] || t}</span>
-          <button type="button" aria-label={`Remove ${(TAG_GROUPS[t] || t)} tag`} onClick={(e) => removeTag(e, t)}>×</button>
+          <span>{CF_TAG_GROUPS[t] || t}</span>
+          <button type="button" aria-label={`Remove ${(CF_TAG_GROUPS[t] || t)} tag`} onClick={(e) => removeTag(e, t)}>×</button>
         </span>
       ))}
     </div>
@@ -579,11 +579,11 @@ function TagPicker({ problem, allTagOptions, onSaveTags }) {
   const available = (allTagOptions ?? []).filter((t) => !problem.tags.includes(t));
   const q = query.trim().toLowerCase();
   const availableTags = q
-    ? available.filter((t) => ((TAG_GROUPS[t] || t).toLowerCase().includes(q) || t.toLowerCase().includes(q)))
+    ? available.filter((t) => ((CF_TAG_GROUPS[t] || t).toLowerCase().includes(q) || t.toLowerCase().includes(q)))
     : available;
   const customTag = query.trim();
   const showCustom = customTag && !problem.tags.includes(customTag)
-    && !available.some((t) => (TAG_GROUPS[t] || t).toLowerCase() === q || t.toLowerCase() === q);
+    && !available.some((t) => (CF_TAG_GROUPS[t] || t).toLowerCase() === q || t.toLowerCase() === q);
 
   function onSearchKeyDown(e) {
     if (e.key !== "Enter") return;
@@ -618,7 +618,7 @@ function TagPicker({ problem, allTagOptions, onSaveTags }) {
           <div className="recent-tag-menu-list">
             {availableTags.map((t) => (
               <button key={t} type="button" className="recent-tag-menu-item" onClick={() => addTag(t)}>
-                {TAG_GROUPS[t] || t}
+                {CF_TAG_GROUPS[t] || t}
               </button>
             ))}
             {showCustom && (
@@ -839,12 +839,12 @@ function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {},
   const allProblems = withTagOverrides(problems, tagOverrides);
   const windowed = withinDays(allProblems, range.days);
   const hasData = windowed.length > 0;
-  const { topics: radarTopicList, lo: radarLo, hi: radarHi } = radarTopics(windowed);
+  const { topics: radarTopicList, lo: radarLo, hi: radarHi } = radarTopics(windowed, CF_TAG_GROUPS);
   // Full topic universe = every canonical tag group, with solved stats merged in
   // (unsolved topics get count/skill 0 so they can still render on the radar).
   const radarUniverse = (() => {
     const byName = new Map(radarTopicList.map((t) => [t.name, t]));
-    const names = [...new Set(Object.values(TAG_GROUPS))];
+    const names = [...new Set(Object.values(CF_TAG_GROUPS))];
     for (const t of radarTopicList) if (!names.includes(t.name)) names.push(t.name);
     return names
       .map((name) => byName.get(name) || { name, count: 0, ratedCount: 0, max: 0, avg: 0, score: 0, skill: 0 })
@@ -857,7 +857,7 @@ function Dashboard({ user, ratingHistory = [], problems = [], tagOverrides = {},
     : radarMode === "all" ? radarUniverse
     : radarUniverse.filter((t) => radarFilter.includes(t.name));
   const diff = difficultyDistribution(windowed);
-  const types = typeDistribution(7, windowed);
+  const types = typeDistribution(7, windowed, CF_TAG_GROUPS);
   // weak-points list: solved topics weakest-first, then unsolved topics
   const weakSolved = radarUniverse.filter((t) => t.ratedCount > 0).slice().sort((a, b) => a.score - b.score);
   const unsolvedTopics = radarUniverse.filter((t) => t.count === 0);

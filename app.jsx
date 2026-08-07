@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { TAG_GROUPS } from "./data";
+import { CF_TAG_GROUPS, TAG_GROUPS } from "./data";
 import { AllSolved, ProblemWindow } from "./allsolved";
 import CustomProblemModal from "./CustomProblemModal";
 import { Dashboard } from "./dashboard";
+import { LeetcodePage } from "./leetcode";
 import { Login, HandleSetup } from "./auth";
 import { createClient } from "./lib/supabase/client";
+import { problemsByPlatform } from "./lib";
 
 const THEME_KEY = "cf_tracker_theme";
 const TAB_KEY = "cf_tracker_tab";
@@ -48,10 +50,11 @@ function EmptyState({ onSync, syncing, error }) {
 
 export default function App() {
   const [hydrated, setHydrated] = useState(false);
-  const [theme, setTheme] = useState("dark");
-  const [tab, setTab] = useState("dashboard");
+  const [theme, setTheme] = useState(() => storedValue(THEME_KEY, "dark"));
+  const [tab, setTab] = useState(() => storedValue(TAB_KEY, "dashboard"));
   const [session, setSession] = useState(undefined); // undefined = loading, null = signed out
   const [handle, setHandle] = useState(null); // CF handle from profile; null = not set
+  const [leetcodeUsername, setLeetcodeUsername] = useState(null);
   const [user, setUser] = useState(null);
   const [ratingHistory, setRatingHistory] = useState([]);
   const [problems, setProblems] = useState([]);
@@ -68,12 +71,6 @@ export default function App() {
 
   // Debounce timer for note saves
   const noteTimers = useRef({});
-
-  // Load theme + tab from localStorage instantly (no flash)
-  useEffect(() => {
-    setTheme(storedValue(THEME_KEY, "dark"));
-    setTab(storedValue(TAB_KEY, "dashboard"));
-  }, []);
 
   // Apply theme
   useEffect(() => {
@@ -93,6 +90,7 @@ export default function App() {
       if (!s) {
         // Signed out: clear user data
         setHandle(null);
+        setLeetcodeUsername(null);
         setUser(null);
         setProblems([]);
         setRatingHistory([]);
@@ -110,9 +108,10 @@ export default function App() {
     let cancelled = false;
     fetch("/api/data")
       .then((r) => r.json())
-      .then(({ handle, user, ratingHistory, problems, radarFilter, radarShowRating }) => {
+      .then(({ handle, leetcodeUsername, user, ratingHistory, problems, radarFilter, radarShowRating }) => {
         if (cancelled) return;
         setHandle(handle ?? null);
+        setLeetcodeUsername(leetcodeUsername ?? null);
         if (user) setUser(user);
         if (ratingHistory) setRatingHistory(ratingHistory);
         setRadarFilter(radarFilter ?? null);
@@ -136,23 +135,31 @@ export default function App() {
     return () => { cancelled = true; };
   }, [session]);
 
-  async function handleSync() {
+  async function handleSync(options = {}) {
     if (syncing) return;
     setSyncing(true);
     setSyncError(null);
     try {
-      const res = await fetch("/api/sync", { method: "POST" });
+      const hasOptions = Object.keys(options).length > 0;
+      const res = await fetch("/api/sync", {
+        method: "POST",
+        ...(hasOptions ? {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(options),
+        } : {}),
+      });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "sync failed");
 
       if (body.user) setUser(body.user);
+      if (body.leetcodeUsername) setLeetcodeUsername(body.leetcodeUsername);
       if (body.ratingHistory) setRatingHistory(body.ratingHistory);
 
       const fetched = body.problems ?? [];
       setProblems((prev) => {
-        const existingIds = new Set(prev.map((p) => p.id));
-        const newOnes = fetched.filter((p) => !existingIds.has(p.id));
-        return newOnes.length ? [...newOnes, ...prev] : prev;
+        const byId = new Map(prev.map((p) => [p.id, p]));
+        fetched.forEach((p) => byId.set(p.id, { ...(byId.get(p.id) ?? {}), ...p }));
+        return [...byId.values()].sort((a, b) => (b.solvedAtTs ?? 0) - (a.solvedAtTs ?? 0));
       });
       setLastSynced(new Date());
     } catch (e) {
@@ -250,6 +257,9 @@ export default function App() {
     }
   }
 
+  const dashboardProblems = problemsByPlatform(problems, ["codeforces", "custom"]);
+  const leetcodeProblems = problemsByPlatform(problems, ["leetcode"]);
+
   const allTagOptions = useMemo(() => (
     Array.from(new Set([
       ...Object.keys(TAG_GROUPS),
@@ -260,9 +270,20 @@ export default function App() {
       return aa.localeCompare(bb);
     })
   ), [problems]);
+  const cfTagOptions = useMemo(() => (
+    Array.from(new Set([
+      ...Object.keys(CF_TAG_GROUPS),
+      ...dashboardProblems.flatMap((p) => p.tags),
+    ])).sort((a, b) => {
+      const aa = (CF_TAG_GROUPS[a] || a).toLowerCase();
+      const bb = (CF_TAG_GROUPS[b] || b).toLowerCase();
+      return aa.localeCompare(bb);
+    })
+  ), [dashboardProblems]);
 
   const tabs = [
-    { id: "dashboard", label: "Dashboard" },
+    { id: "dashboard", label: "Codeforces" },
+    { id: "leetcode", label: "LeetCode" },
     { id: "all", label: "All Solved" },
   ];
 
@@ -339,12 +360,16 @@ export default function App() {
         {!hasData ? (
           <EmptyState onSync={handleSync} syncing={syncing} error={syncError} />
         ) : tab === "dashboard" ? (
-          <Dashboard user={user} ratingHistory={ratingHistory} problems={problems}
-            tagOverrides={tagOverrides} allTagOptions={allTagOptions}
+          <Dashboard user={user} ratingHistory={ratingHistory} problems={dashboardProblems}
+            tagOverrides={tagOverrides} allTagOptions={cfTagOptions}
             radarFilter={radarFilter} onSaveRadarFilter={saveRadarFilter}
             radarShowRating={radarShowRating} onSaveRadarShowRating={saveRadarShowRating}
             onSaveTags={saveTags} onOpenProblem={setOpenProblem} onGoAllSolved={() => setTab("all")}
             onAddCustom={() => setCustomEditor({ problem: null })} />
+        ) : tab === "leetcode" ? (
+          <LeetcodePage problems={leetcodeProblems} leetcodeUsername={leetcodeUsername}
+            tagOverrides={tagOverrides} onUsernameSaved={setLeetcodeUsername}
+            onSync={handleSync} syncing={syncing} onOpenProblem={setOpenProblem} />
         ) : (
           <AllSolved problems={problems} notes={notes} tagOverrides={tagOverrides}
             allTagOptions={allTagOptions} onOpen={setOpenProblem}

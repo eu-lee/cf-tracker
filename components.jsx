@@ -5,6 +5,7 @@
 
 import { useEffect, useRef } from "react";
 import { diffColor } from "./lib.js";
+import { leetcodeDifficultyColor } from "./lib/leetcode.js";
 
 /* Render text containing $inline$ / $$display$$ LaTeX via KaTeX auto-render */
 export function Latex({ text, className, style }) {
@@ -31,6 +32,14 @@ export function Latex({ text, className, style }) {
 
 /* Numeric difficulty badge */
 export function DiffBadge({ rating, size = "md" }) {
+  if (rating == null) {
+    return (
+      <span className="mono" style={{
+        display: "inline-flex", alignItems: "center", padding: size === "sm" ? "1px 7px" : "2px 9px",
+        fontSize: size === "sm" ? 11.5 : 13, fontWeight: 600, color: "var(--text-faint)",
+      }}>—</span>
+    );
+  }
   const color = diffColor(rating);
   const pad = size === "sm" ? "1px 7px" : "2px 9px";
   const fs = size === "sm" ? 11.5 : 13;
@@ -40,6 +49,31 @@ export function DiffBadge({ rating, size = "md" }) {
       fontSize: fs, fontWeight: 600, color, background: "transparent",
       border: "none", letterSpacing: "-0.01em",
     }}>{rating}</span>
+  );
+}
+
+export function DifficultyBadge({ problem, size = "md" }) {
+  if (problem?.platform === "leetcode") {
+    const difficulty = problem.lcDifficulty || "Unknown";
+    const pad = size === "sm" ? "1px 7px" : "2px 9px";
+    const fs = size === "sm" ? 11.5 : 13;
+    return (
+      <span className="mono" style={{
+        display: "inline-flex", alignItems: "center", padding: pad, borderRadius: 0,
+        fontSize: fs, fontWeight: 600, color: leetcodeDifficultyColor(difficulty),
+        background: "transparent", border: "none",
+      }}>{difficulty}</span>
+    );
+  }
+  return <DiffBadge rating={problem?.rating} size={size} />;
+}
+
+export function PlatformBadge({ platform }) {
+  const label = platform === "leetcode" ? "LC" : platform === "custom" ? "custom" : "CF";
+  return (
+    <span className="chip" style={{ flexShrink: 0, textTransform: platform === "custom" ? "none" : "uppercase" }}>
+      {label}
+    </span>
   );
 }
 

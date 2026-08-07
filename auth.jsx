@@ -86,10 +86,10 @@ export function HandleSetup({ onComplete }) {
       <div style={{ fontSize: 40, lineHeight: 1 }}>⌬</div>
       <div>
         <div style={{ fontSize: 20, fontWeight: 700, color: "var(--text)", marginBottom: 8 }}>
-          What's your Codeforces handle?
+          What&apos;s your Codeforces handle?
         </div>
         <div style={{ fontSize: 14, color: "var(--text-faint)", maxWidth: 360, lineHeight: 1.6 }}>
-          We'll pull your submissions and rating history for this handle.
+          We&apos;ll pull your submissions and rating history for this handle.
         </div>
       </div>
       <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>

@@ -5,10 +5,13 @@ import { createClient } from "../../../lib/supabase/server";
 function mapProblemRow(p) {
   return {
     id: p.id,
+    platform: p.platform ?? (p.is_custom ? "custom" : "codeforces"),
     contestId: p.contest_id,
     index: p.problem_index,
     name: p.name,
     rating: p.rating,
+    lcDifficulty: p.lc_difficulty ?? null,
+    url: p.problem_url ?? null,
     tags: p.tags ?? [],
     solvedAt: p.solved_at,
     solvedAtTs: p.solved_at_ts,
@@ -76,6 +79,7 @@ export async function POST(req) {
     id,
     contest_id: 0,
     problem_index: "",
+    platform: "custom",
     name,
     rating: Number.isFinite(ratingNum) && ratingNum > 0 ? Math.round(ratingNum) : null,
     tags: cleanTags(body.tags),

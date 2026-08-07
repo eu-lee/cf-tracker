@@ -20,6 +20,7 @@ create table profiles (
   contribution   integer,
   friends        integer,
   registered     text,
+  leetcode_username text,
   rating_history    jsonb default '[]',
   radar_filter      jsonb,                  -- null = solved topics, "all" = all, [..] = custom
   radar_show_rating boolean default false
@@ -28,10 +29,13 @@ create table profiles (
 create table problems (
   user_id       uuid not null references auth.users(id) on delete cascade,
   id            text not null,              -- "{contestId}{index}"
+  platform      text not null default 'codeforces',
   contest_id    integer not null,
   problem_index text not null,
   name          text not null,
   rating        integer,
+  lc_difficulty text,
+  problem_url   text,
   tags          text[] default '{}',
   solved_at     text not null,             -- YYYY-MM-DD
   solved_at_ts  bigint,                    -- ms timestamp for accurate sort
@@ -85,7 +89,17 @@ create trigger on_auth_user_created
 alter table problems
   add column if not exists is_custom   boolean not null default false,
   add column if not exists description jsonb,
-  add column if not exists images      text[] not null default '{}';
+  add column if not exists images      text[] not null default '{}',
+  add column if not exists platform    text not null default 'codeforces',
+  add column if not exists lc_difficulty text,
+  add column if not exists problem_url text;
+
+alter table profiles
+  add column if not exists leetcode_username text;
+
+update problems
+set platform = case when is_custom then 'custom' else 'codeforces' end
+where platform is null or platform = 'codeforces';
 
 do $$
 begin
