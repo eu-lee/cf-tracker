@@ -3,6 +3,11 @@ import { createClient } from "../../../lib/supabase/server";
 import { capitalize, isoDate, cfFetch } from "../../../lib/cf";
 import { fetchQuestionMeta, fetchRecentAccepted } from "../../../lib/leetcode";
 
+// A full Codeforces history can require several API pages and a large database
+// upsert. Allow the route enough time on hosts that support Next's duration
+// configuration instead of failing the client request mid-sync.
+export const maxDuration = 60;
+
 // CF allows large page sizes; walk the full submission history in batches
 // (newest-first) until a short page signals the end.
 const BATCH = 2000;
@@ -102,6 +107,7 @@ export async function POST(req) {
   let ratingHistory = [];
   let cfProblems = [];
   let leetcodeProblems = [];
+  const warnings = [];
 
   if (handle && syncCodeforces) {
     let userResult, ratingResult, statusResult;
@@ -172,7 +178,9 @@ export async function POST(req) {
     try {
       leetcodeProblems = await buildLeetcodeProblems(leetcodeUsername, user.id, lcLimit);
     } catch (e) {
-      return NextResponse.json({ error: e.message }, { status: 502 });
+      // LeetCode's unofficial GraphQL endpoint can intermittently reject a
+      // request. Keep a Codeforces sync useful even when that happens.
+      warnings.push(`LeetCode was not synced: ${e.message}`);
     }
   }
 
@@ -230,5 +238,6 @@ export async function POST(req) {
       leetcode: leetcodeProblems.length,
       leetcodeLimit: lcLimit,
     },
+    warnings,
   });
 }

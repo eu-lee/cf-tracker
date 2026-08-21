@@ -68,6 +68,7 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
   const [lastSynced, setLastSynced] = useState(null);
   const [syncError, setSyncError] = useState(null);
+  const [syncWarning, setSyncWarning] = useState(null);
 
   // Debounce timer for note saves
   const noteTimers = useRef({});
@@ -139,6 +140,7 @@ export default function App() {
     if (syncing) return;
     setSyncing(true);
     setSyncError(null);
+    setSyncWarning(null);
     try {
       const hasOptions = Object.keys(options).length > 0;
       const res = await fetch("/api/sync", {
@@ -147,8 +149,15 @@ export default function App() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(options),
         } : {}),
+        credentials: "same-origin",
       });
-      const body = await res.json();
+      const rawBody = await res.text();
+      let body;
+      try {
+        body = rawBody ? JSON.parse(rawBody) : {};
+      } catch {
+        throw new Error(`sync request failed (${res.status})`);
+      }
       if (!res.ok) throw new Error(body.error ?? "sync failed");
 
       if (body.user) setUser(body.user);
@@ -162,6 +171,7 @@ export default function App() {
         return [...byId.values()].sort((a, b) => (b.solvedAtTs ?? 0) - (a.solvedAtTs ?? 0));
       });
       setLastSynced(new Date());
+      if (body.warnings?.length) setSyncWarning(body.warnings.join(" "));
     } catch (e) {
       setSyncError(e.message);
     } finally {
@@ -333,7 +343,10 @@ export default function App() {
             {syncError && !syncing && (
               <span style={{ fontSize: 11.5, color: "var(--bad)" }} title={syncError}>sync failed</span>
             )}
-            {lastSynced && !syncing && !syncError && (
+            {syncWarning && !syncing && !syncError && (
+              <span style={{ fontSize: 11.5, color: "var(--cf-orange)" }} title={syncWarning}>partial sync</span>
+            )}
+            {lastSynced && !syncing && !syncError && !syncWarning && (
               <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>
                 synced {lastSynced.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
               </span>
