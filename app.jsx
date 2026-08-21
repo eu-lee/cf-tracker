@@ -40,7 +40,7 @@ function EmptyState({ onSync, syncing, error }) {
           {error}
         </div>
       )}
-      <button className="btn btn-accent" onClick={onSync} disabled={syncing}
+      <button className="btn btn-accent" onClick={() => onSync()} disabled={syncing}
         style={{ padding: "10px 24px", fontSize: 14, opacity: syncing ? 0.6 : 1 }}>
         {syncing ? "syncing…" : "↻ sync now"}
       </button>
@@ -351,7 +351,7 @@ export default function App() {
                 synced {lastSynced.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
               </span>
             )}
-            <button className="btn" onClick={handleSync} disabled={syncing}
+            <button className="btn" onClick={() => handleSync()} disabled={syncing}
               title="Fetch latest submissions from Codeforces"
               style={{ padding: "7px 12px", fontSize: 12.5, opacity: syncing ? 0.6 : 1 }}>
               {syncing ? "syncing…" : "↻ sync"}
